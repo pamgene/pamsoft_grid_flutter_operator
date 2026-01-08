@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(unzip:*)",
+      "Bash(ls:*)",
+      "Bash(pip show:*)",
+      "Bash(pip install:*)",
+      "Bash(flutter create:*)",
+      "Bash(flutter pub get:*)",
+      "Bash(flutter analyze:*)",
+      "Bash(flutter run:*)",
+      "Bash(timeout:*)",
+      "Bash(ping:*)",
+      "Bash(python:*)",
+      "Bash(gh repo create:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git reset:*)"
+    ]
+  }
+}
