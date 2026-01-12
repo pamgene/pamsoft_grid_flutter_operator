@@ -50,3 +50,8 @@ app.*.map.json
 /linux/
 /macos/
 /windows/
+
+# Specification documents
+FUNCTIONAL_SPECIFICATION.md
+TECHNICAL_SPECIFICATION.md
+/Files/
