@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:pamsoft_grid_flutter_operator/models/grid_data.dart';
 import 'package:pamsoft_grid_flutter_operator/providers/grid_provider.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/constants.dart';
+import 'dart:math' as math;
 
 /// Interactive canvas for displaying and manipulating the grid overlay.
 class GridCanvas extends StatefulWidget {
@@ -22,6 +24,7 @@ class GridCanvas extends StatefulWidget {
 class _GridCanvasState extends State<GridCanvas> {
   String? _draggingFiducialId;
   Offset? _lastDragPosition;
+  bool _isRotating = false;
 
   @override
   Widget build(BuildContext context) {
@@ -32,17 +35,21 @@ class _GridCanvasState extends State<GridCanvas> {
           return const SizedBox.shrink();
         }
 
-        return GestureDetector(
-          onPanStart: (details) =>
-              _onPanStart(details, gridData, gridProvider),
-          onPanUpdate: (details) => _onPanUpdate(details, gridProvider, gridData),
-          onPanEnd: (_) => _onPanEnd(),
-          child: CustomPaint(
-            size: Size(widget.containerWidth, widget.containerHeight),
-            painter: GridPainter(
-              gridData: gridData,
-              containerWidth: widget.containerWidth,
-              containerHeight: widget.containerHeight,
+        return RawKeyboardListener(
+          focusNode: FocusNode(),
+          autofocus: true,
+          child: GestureDetector(
+            onPanStart: (details) =>
+                _onPanStart(details, gridData, gridProvider),
+            onPanUpdate: (details) => _onPanUpdate(details, gridProvider, gridData),
+            onPanEnd: (_) => _onPanEnd(),
+            child: CustomPaint(
+              size: Size(widget.containerWidth, widget.containerHeight),
+              painter: GridPainter(
+                gridData: gridData,
+                containerWidth: widget.containerWidth,
+                containerHeight: widget.containerHeight,
+              ),
             ),
           ),
         );
@@ -56,6 +63,9 @@ class _GridCanvasState extends State<GridCanvas> {
     GridProvider provider,
   ) {
     final localPosition = details.localPosition;
+
+    // Check if Shift key is pressed for rotation mode
+    _isRotating = HardwareKeyboard.instance.isShiftPressed;
 
     // Check if we're clicking on a fiducial
     for (final fiducial in gridData.fiducials) {
@@ -72,7 +82,7 @@ class _GridCanvasState extends State<GridCanvas> {
       }
     }
 
-    // Not on a fiducial, will drag whole grid
+    // Not on a fiducial, will drag whole grid or rotate
     _draggingFiducialId = null;
     _lastDragPosition = localPosition;
   }
@@ -80,17 +90,20 @@ class _GridCanvasState extends State<GridCanvas> {
   void _onPanUpdate(DragUpdateDetails details, GridProvider provider, GridData gridData) {
     if (_lastDragPosition == null) return;
 
-    final delta = details.localPosition - _lastDragPosition!;
-    _lastDragPosition = details.localPosition;
-
-    // Calculate constrained delta to keep grid within bounds
-    final constrainedDelta = _constrainDelta(delta, gridData);
+    final currentPosition = details.localPosition;
+    final delta = currentPosition - _lastDragPosition!;
+    _lastDragPosition = currentPosition;
 
     if (_draggingFiducialId != null) {
       // Dragging individual fiducial
+      final constrainedDelta = _constrainDelta(delta, gridData);
       provider.moveFiducial(_draggingFiducialId!, constrainedDelta.dx, constrainedDelta.dy);
+    } else if (_isRotating) {
+      // Rotating whole grid
+      _rotateGrid(delta, currentPosition, gridData, provider);
     } else {
       // Dragging whole grid
+      final constrainedDelta = _constrainDelta(delta, gridData);
       provider.moveWholeGrid(constrainedDelta.dx, constrainedDelta.dy);
     }
   }
@@ -138,9 +151,42 @@ class _GridCanvasState extends State<GridCanvas> {
     return Offset(constrainedDx, constrainedDy);
   }
 
+  void _rotateGrid(Offset delta, Offset currentPosition, GridData gridData, GridProvider provider) {
+    // Calculate grid center
+    double cx = 0;
+    double cy = 0;
+    final n = gridData.fiducials.length;
+
+    for (final fiducial in gridData.fiducials) {
+      cx += fiducial.x + gridData.globalOffsetX;
+      cy += fiducial.y + gridData.globalOffsetY;
+    }
+    cx /= n;
+    cy /= n;
+
+    // Calculate rotation angle (0.2 degrees per drag movement)
+    double radians = (math.pi / 180) * 0.2;
+
+    // Rotation direction based on mouse position relative to center and drag direction
+    final dy = delta.dy;
+    final startX = currentPosition.dx;
+
+    if (dy > 0 && startX > cx) {
+      radians *= -1;
+    }
+
+    if (dy < 0 && startX < cx) {
+      radians *= -1;
+    }
+
+    // Apply rotation to all fiducials
+    provider.rotateWholeGrid(radians, cx, cy);
+  }
+
   void _onPanEnd() {
     _draggingFiducialId = null;
     _lastDragPosition = null;
+    _isRotating = false;
   }
 }
 

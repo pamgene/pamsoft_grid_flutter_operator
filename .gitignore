@@ -12,6 +12,9 @@
 .swiftpm/
 migrate_working_dir/
 
+# Claude Code settings
+.claude/
+
 # IntelliJ related
 *.iml
 *.ipr
@@ -27,7 +30,9 @@ migrate_working_dir/
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
+.flutter-plugins
 .flutter-plugins-dependencies
+.packages
 .pub-cache/
 .pub/
 /coverage/
@@ -42,6 +47,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Build artifacts (keep only /build/web for deployment)
+/build/*
+!/build/web/
 
 # Platform-specific directories (not needed for web/wasm)
 /android/

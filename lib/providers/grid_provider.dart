@@ -3,6 +3,7 @@ import 'package:pamsoft_grid_flutter_operator/di/service_locator.dart';
 import 'package:pamsoft_grid_flutter_operator/models/grid_data.dart';
 import 'package:pamsoft_grid_flutter_operator/models/enums.dart';
 import 'package:pamsoft_grid_flutter_operator/services/grid_service.dart';
+import 'dart:math' as math;
 
 /// Provider for managing grid state and interactions.
 class GridProvider extends ChangeNotifier {
@@ -66,6 +67,40 @@ class GridProvider extends ChangeNotifier {
 
     _currentGridData!.fiducials[fiducialIndex].individualOffsetX += dx;
     _currentGridData!.fiducials[fiducialIndex].individualOffsetY += dy;
+
+    _markAsModified();
+    notifyListeners();
+  }
+
+  /// Rotates the entire grid around a center point.
+  void rotateWholeGrid(double radians, double centerX, double centerY) {
+    if (_currentGridData == null) return;
+
+    final cos = math.cos(radians);
+    final sin = math.sin(radians);
+
+    for (final fiducial in _currentGridData!.fiducials) {
+      // Get current position
+      final currentX = fiducial.x + _currentGridData!.globalOffsetX;
+      final currentY = fiducial.y + _currentGridData!.globalOffsetY;
+
+      // Translate to origin (relative to center)
+      final relX = currentX - centerX;
+      final relY = currentY - centerY;
+
+      // Apply rotation
+      final newX = (cos * relX) + (sin * relY);
+      final newY = (cos * relY) - (sin * relX);
+
+      // Translate back
+      final rotatedX = newX + centerX;
+      final rotatedY = newY + centerY;
+
+      // Update fiducial position by adjusting its base coordinates
+      // Since we're working with global offset, we need to update the individual offsets
+      fiducial.individualOffsetX += rotatedX - currentX;
+      fiducial.individualOffsetY += rotatedY - currentY;
+    }
 
     _markAsModified();
     notifyListeners();

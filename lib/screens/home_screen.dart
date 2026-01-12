@@ -203,6 +203,30 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
+            // Rotation hint
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Row(
+                children: [
+                  Tooltip(
+                    message: 'Hold shift to rotate grid',
+                    child: Icon(
+                      Icons.refresh,
+                      size: 16,
+                      color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Hold Shift to rotate',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
             // Image viewer
             Expanded(
               child: const ImageViewer(),
