@@ -91,6 +91,8 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text(AppConstants.appTitle),
+          backgroundColor: const Color(0xFF005f75),
+          foregroundColor: Colors.white,
           actions: const [
             ThemeToggle(),
             SizedBox(width: 8),

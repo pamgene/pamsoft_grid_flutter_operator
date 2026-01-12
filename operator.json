@@ -1,0 +1,21 @@
+{
+  "name": "Grid Checker",
+  "description": "",
+  "isWebApp": true,
+  "isViewOnly": false,
+  "entryType": "app",
+  "tags": [
+    "workflow"
+  ],
+  "authors": [
+    "tercen"
+  ],
+  "urls": [
+    "https://github.com/tercen/pamsoft_grid_flutter_operator"
+  ],
+  "serve": "build/web",
+  "properties": [
+
+  ],
+  "auth": [""]
+}
