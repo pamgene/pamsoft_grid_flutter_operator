@@ -41,7 +41,7 @@ class ImageViewer extends StatelessWidget {
                         brightness: settingsProvider.brightness,
                         contrast: settingsProvider.contrast,
                       ),
-                      child: Image.network(
+                      child: Image.asset(
                         assetPath,
                         fit: BoxFit.fill,
                         errorBuilder: (context, error, stackTrace) {
