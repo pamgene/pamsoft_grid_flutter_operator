@@ -441,6 +441,18 @@ class CompiledApp {
       _1350: () => typeof dartUseDateNowForTicks !== "undefined",
       _1351: () => 1000 * performance.now(),
       _1352: () => Date.now(),
+      _1353: () => {
+        // On browsers return `globalThis.location.href`
+        if (globalThis.location != null) {
+          return globalThis.location.href;
+        }
+        return null;
+      },
+      _1354: () => {
+        return typeof process != "undefined" &&
+               Object.prototype.toString.call(process) == "[object process]" &&
+               process.platform == "win32"
+      },
       _1355: () => new WeakMap(),
       _1356: (map, o) => map.get(o),
       _1357: (map, o, v) => map.set(o, v),
@@ -450,6 +462,7 @@ class CompiledApp {
       _1370: s => JSON.stringify(s),
       _1371: s => printToConsole(s),
       _1372: (o, p, r) => o.replaceAll(p, () => r),
+      _1373: (o, p, r) => o.replace(p, () => r),
       _1374: Function.prototype.call.bind(String.prototype.toLowerCase),
       _1375: s => s.toUpperCase(),
       _1376: s => s.trim(),
@@ -465,6 +478,7 @@ class CompiledApp {
       _1390: (a, i) => a.splice(i, 1),
       _1391: (a, s) => a.join(s),
       _1392: (a, s, e) => a.slice(s, e),
+      _1394: (a, b) => a == b ? 0 : (a > b ? 1 : -1),
       _1395: a => a.length,
       _1397: (a, i) => a[i],
       _1398: (a, i, v) => a[i] = v,
@@ -666,12 +680,34 @@ class CompiledApp {
       _1529: (x0,x1) => { x0.lastIndex = x1 },
       _1530: (o, p) => p in o,
       _1531: (o, p) => o[p],
-      _1534: x0 => x0.random(),
-      _1537: () => globalThis.Math,
-      _1538: Function.prototype.call.bind(Number.prototype.toString),
-      _1539: Function.prototype.call.bind(BigInt.prototype.toString),
-      _1540: Function.prototype.call.bind(Number.prototype.toString),
-      _1541: (d, digits) => d.toFixed(digits),
+      _1552: () => new AbortController(),
+      _1553: x0 => x0.abort(),
+      _1554: (x0,x1,x2,x3,x4,x5) => ({method: x0,headers: x1,body: x2,credentials: x3,redirect: x4,signal: x5}),
+      _1555: (x0,x1) => globalThis.fetch(x0,x1),
+      _1556: (x0,x1) => x0.get(x1),
+      _1557: f => finalizeWrapper(f, function(x0,x1,x2) { return dartInstance.exports._1557(f,arguments.length,x0,x1,x2) }),
+      _1558: (x0,x1) => x0.forEach(x1),
+      _1559: x0 => x0.getReader(),
+      _1560: x0 => x0.cancel(),
+      _1561: x0 => x0.read(),
+      _1562: x0 => x0.random(),
+      _1565: () => globalThis.Math,
+      _1578: Function.prototype.call.bind(Number.prototype.toString),
+      _1579: Function.prototype.call.bind(BigInt.prototype.toString),
+      _1580: Function.prototype.call.bind(Number.prototype.toString),
+      _1581: (d, digits) => d.toFixed(digits),
+      _3460: () => globalThis.window,
+      _3501: x0 => x0.document,
+      _6067: x0 => x0.signal,
+      _6124: x0 => x0.baseURI,
+      _7907: x0 => x0.value,
+      _7909: x0 => x0.done,
+      _8611: x0 => x0.url,
+      _8613: x0 => x0.status,
+      _8615: x0 => x0.statusText,
+      _8616: x0 => x0.headers,
+      _8617: x0 => x0.body,
+      _12245: x0 => x0.name,
 
     };
 
