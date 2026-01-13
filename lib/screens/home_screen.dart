@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:pamsoft_grid_flutter_operator/providers/grid_provider.dart';
 import 'package:pamsoft_grid_flutter_operator/providers/image_selection_provider.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/constants.dart';
@@ -24,13 +25,22 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final FocusNode _focusNode = FocusNode();
+  String _version = '';
 
   @override
   void initState() {
     super.initState();
-    // Load experiment data when screen initializes
+    // Load version and experiment data when screen initializes
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadVersion();
       _loadData();
+    });
+  }
+
+  Future<void> _loadVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    setState(() {
+      _version = packageInfo.version;
     });
   }
 
@@ -90,7 +100,23 @@ class _HomeScreenState extends State<HomeScreen> {
       onKeyEvent: _handleKeyEvent,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text(AppConstants.appTitle),
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(AppConstants.appTitle),
+              if (_version.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Text(
+                  'v$_version',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.normal,
+                    color: Colors.white70,
+                  ),
+                ),
+              ],
+            ],
+          ),
           backgroundColor: const Color(0xFF005f75),
           foregroundColor: Colors.white,
           actions: const [
