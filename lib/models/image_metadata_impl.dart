@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:pamsoft_grid_flutter_operator/models/image_metadata.dart';
 
 /// Concrete implementation of ImageMetadata.
@@ -32,6 +33,9 @@ class ImageMetadataImpl implements ImageMetadata {
   @override
   final bool isGridImage;
 
+  @override
+  final Uint8List? imageBytes;
+
   const ImageMetadataImpl({
     required this.id,
     required this.filename,
@@ -43,13 +47,14 @@ class ImageMetadataImpl implements ImageMetadata {
     required this.imageNumber,
     required this.array,
     this.isGridImage = false,
+    this.imageBytes,
   });
 
   @override
   String get displayName => id;
 
   @override
-  ImageMetadata copyWith({bool? isGridImage}) {
+  ImageMetadata copyWith({bool? isGridImage, Uint8List? imageBytes}) {
     return ImageMetadataImpl(
       id: id,
       filename: filename,
@@ -61,6 +66,7 @@ class ImageMetadataImpl implements ImageMetadata {
       imageNumber: imageNumber,
       array: array,
       isGridImage: isGridImage ?? this.isGridImage,
+      imageBytes: imageBytes ?? this.imageBytes,
     );
   }
 

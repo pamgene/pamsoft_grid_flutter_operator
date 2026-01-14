@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:pamsoft_grid_flutter_operator/di/service_locator.dart';
 import 'package:pamsoft_grid_flutter_operator/models/image_metadata.dart';
@@ -12,11 +13,15 @@ class ImageSelectionProvider extends ChangeNotifier {
   int _currentGridIndex = 0;
   int _currentImageIndex = 0;
   bool _isLoading = false;
+  bool _isLoadingImage = false;
   String? _error;
+  Uint8List? _currentImageBytes;
 
   ExperimentData? get experimentData => _experimentData;
   bool get isLoading => _isLoading;
+  bool get isLoadingImage => _isLoadingImage;
   String? get error => _error;
+  Uint8List? get currentImageBytes => _currentImageBytes;
 
   /// Gets the current grid image.
   ImageMetadata? get currentGridImage {
@@ -66,10 +71,36 @@ class ImageSelectionProvider extends ChangeNotifier {
       _experimentData = await _imageService.loadExperimentData();
       _currentGridIndex = 0;
       _currentImageIndex = 0;
+      _isLoading = false;
+      notifyListeners();
+
+      // Load the first image bytes
+      await _loadCurrentImageBytes();
     } catch (e) {
       _error = e.toString();
-    } finally {
       _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Loads the image bytes for the current image.
+  Future<void> _loadCurrentImageBytes() async {
+    final image = currentImage;
+    if (image == null) {
+      _currentImageBytes = null;
+      return;
+    }
+
+    _isLoadingImage = true;
+    notifyListeners();
+
+    try {
+      _currentImageBytes = await _imageService.getImageBytes(image.id);
+    } catch (e) {
+      print('ImageSelectionProvider: Error loading image bytes: $e');
+      _currentImageBytes = null;
+    } finally {
+      _isLoadingImage = false;
       notifyListeners();
     }
   }
@@ -80,7 +111,9 @@ class ImageSelectionProvider extends ChangeNotifier {
     if (_currentGridIndex < _experimentData!.gridImages.length - 1) {
       _currentGridIndex++;
       _currentImageIndex = 0;
+      _currentImageBytes = null;
       notifyListeners();
+      _loadCurrentImageBytes();
     }
   }
 
@@ -89,7 +122,9 @@ class ImageSelectionProvider extends ChangeNotifier {
     if (_currentGridIndex > 0) {
       _currentGridIndex--;
       _currentImageIndex = 0;
+      _currentImageBytes = null;
       notifyListeners();
+      _loadCurrentImageBytes();
     }
   }
 
@@ -99,7 +134,9 @@ class ImageSelectionProvider extends ChangeNotifier {
     if (index >= 0 && index < _experimentData!.gridImages.length) {
       _currentGridIndex = index;
       _currentImageIndex = 0;
+      _currentImageBytes = null;
       notifyListeners();
+      _loadCurrentImageBytes();
     }
   }
 
@@ -108,7 +145,9 @@ class ImageSelectionProvider extends ChangeNotifier {
     final images = currentGridImages;
     if (_currentImageIndex < images.length - 1) {
       _currentImageIndex++;
+      _currentImageBytes = null;
       notifyListeners();
+      _loadCurrentImageBytes();
     }
   }
 
@@ -116,7 +155,9 @@ class ImageSelectionProvider extends ChangeNotifier {
   void previousImage() {
     if (_currentImageIndex > 0) {
       _currentImageIndex--;
+      _currentImageBytes = null;
       notifyListeners();
+      _loadCurrentImageBytes();
     }
   }
 
@@ -125,7 +166,9 @@ class ImageSelectionProvider extends ChangeNotifier {
     final images = currentGridImages;
     if (index >= 0 && index < images.length) {
       _currentImageIndex = index;
+      _currentImageBytes = null;
       notifyListeners();
+      _loadCurrentImageBytes();
     }
   }
 

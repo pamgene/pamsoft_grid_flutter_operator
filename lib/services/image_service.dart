@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:pamsoft_grid_flutter_operator/models/image_metadata.dart';
 import 'package:pamsoft_grid_flutter_operator/models/experiment_data.dart';
 
@@ -26,6 +27,12 @@ abstract class ImageService {
   /// In mock implementation, cycles through available sample images.
   /// [imageId] - The image identifier.
   String getImageAssetPath(String imageId);
+
+  /// Fetches TIFF image and converts to PNG bytes.
+  ///
+  /// [imageId] - The image identifier.
+  /// Returns PNG bytes or null if conversion fails.
+  Future<Uint8List?> getImageBytes(String imageId);
 
   /// Parses filename to extract metadata.
   ///

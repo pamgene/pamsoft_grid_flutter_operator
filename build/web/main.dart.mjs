@@ -193,7 +193,6 @@ class CompiledApp {
       _745: f => finalizeWrapper(f, function(x0) { return dartInstance.exports._745(f,arguments.length,x0) }),
       _746: (x0,x1) => x0.requestAnimationFrame(x1),
       _751: (x0,x1) => x0.warn(x1),
-      _753: (x0,x1) => x0.debug(x1),
       _754: x0 => globalThis.parseFloat(x0),
       _755: () => globalThis.window,
       _756: () => globalThis.Intl,
@@ -227,7 +226,6 @@ class CompiledApp {
       _812: x0 => x0.parentElement,
       _814: (x0,x1) => { x0.textContent = x1 },
       _815: x0 => x0.parentNode,
-      _816: x0 => x0.nextSibling,
       _817: (x0,x1) => x0.removeChild(x1),
       _818: x0 => x0.isConnected,
       _826: x0 => x0.clientHeight,
@@ -423,15 +421,6 @@ class CompiledApp {
       _1281: x0 => x0.selectedTrack,
       _1282: x0 => x0.repetitionCount,
       _1283: x0 => x0.frameCount,
-      _1331: (x0,x1) => x0.createElement(x1),
-      _1337: (x0,x1,x2) => x0.addEventListener(x1,x2),
-      _1338: x0 => x0.decode(),
-      _1339: (x0,x1,x2,x3) => x0.open(x1,x2,x3),
-      _1340: (x0,x1,x2) => x0.setRequestHeader(x1,x2),
-      _1341: f => finalizeWrapper(f, function(x0) { return dartInstance.exports._1341(f,arguments.length,x0) }),
-      _1342: f => finalizeWrapper(f, function(x0) { return dartInstance.exports._1342(f,arguments.length,x0) }),
-      _1343: x0 => x0.send(),
-      _1344: () => new XMLHttpRequest(),
       _1345: Date.now,
       _1347: s => new Date(s * 1000).getTimezoneOffset() * 60,
       _1348: s => {
@@ -639,6 +628,18 @@ class CompiledApp {
           setValue(wasmArray, wasmArrayOffset + i, jsArray[jsArrayOffset + i]);
         }
       },
+      _1511: (jsArray, jsArrayOffset, wasmArray, wasmArrayOffset, length) => {
+        const getValue = dartInstance.exports.$wasmI16ArrayGet;
+        for (let i = 0; i < length; i++) {
+          jsArray[jsArrayOffset + i] = getValue(wasmArray, wasmArrayOffset + i);
+        }
+      },
+      _1512: (jsArray, jsArrayOffset, wasmArray, wasmArrayOffset, length) => {
+        const setValue = dartInstance.exports.$wasmI16ArraySet;
+        for (let i = 0; i < length; i++) {
+          setValue(wasmArray, wasmArrayOffset + i, jsArray[jsArrayOffset + i]);
+        }
+      },
       _1513: (jsArray, jsArrayOffset, wasmArray, wasmArrayOffset, length) => {
         const getValue = dartInstance.exports.$wasmI32ArrayGet;
         for (let i = 0; i < length; i++) {
@@ -691,6 +692,9 @@ class CompiledApp {
       _1529: (x0,x1) => { x0.lastIndex = x1 },
       _1530: (o, p) => p in o,
       _1531: (o, p) => o[p],
+      _1534: () => new XMLHttpRequest(),
+      _1535: (x0,x1,x2,x3) => x0.open(x1,x2,x3),
+      _1539: x0 => x0.send(),
       _1552: () => new AbortController(),
       _1553: x0 => x0.abort(),
       _1554: (x0,x1,x2,x3,x4,x5) => ({method: x0,headers: x1,body: x2,credentials: x3,redirect: x4,signal: x5}),
@@ -701,37 +705,33 @@ class CompiledApp {
       _1559: x0 => x0.getReader(),
       _1560: x0 => x0.cancel(),
       _1561: x0 => x0.read(),
-      _1562: x0 => x0.random(),
-      _1565: () => globalThis.Math,
-      _1578: Function.prototype.call.bind(Number.prototype.toString),
-      _1579: Function.prototype.call.bind(BigInt.prototype.toString),
+      _1562: f => finalizeWrapper(f, function(x0) { return dartInstance.exports._1562(f,arguments.length,x0) }),
+      _1563: f => finalizeWrapper(f, function(x0) { return dartInstance.exports._1563(f,arguments.length,x0) }),
+      _1564: x0 => x0.random(),
+      _1567: () => globalThis.Math,
       _1580: Function.prototype.call.bind(Number.prototype.toString),
-      _1581: (d, digits) => d.toFixed(digits),
-      _1585: () => globalThis.document,
-      _1591: (x0,x1) => { x0.height = x1 },
-      _1593: (x0,x1) => { x0.width = x1 },
-      _1602: x0 => x0.style,
-      _1605: x0 => x0.src,
-      _1606: (x0,x1) => { x0.src = x1 },
-      _1607: x0 => x0.naturalWidth,
-      _1608: x0 => x0.naturalHeight,
-      _1624: x0 => x0.status,
-      _1625: (x0,x1) => { x0.responseType = x1 },
-      _1627: x0 => x0.response,
-      _3460: () => globalThis.window,
-      _3501: x0 => x0.document,
-      _3504: x0 => x0.location,
-      _3795: x0 => x0.href,
-      _6067: x0 => x0.signal,
-      _6124: x0 => x0.baseURI,
-      _7907: x0 => x0.value,
-      _7909: x0 => x0.done,
-      _8611: x0 => x0.url,
-      _8613: x0 => x0.status,
-      _8615: x0 => x0.statusText,
-      _8616: x0 => x0.headers,
-      _8617: x0 => x0.body,
-      _12245: x0 => x0.name,
+      _1581: Function.prototype.call.bind(BigInt.prototype.toString),
+      _1582: Function.prototype.call.bind(Number.prototype.toString),
+      _1583: (d, digits) => d.toFixed(digits),
+      _1656: (x0,x1) => { x0.onerror = x1 },
+      _1658: (x0,x1) => { x0.onload = x1 },
+      _1675: x0 => x0.status,
+      _1678: (x0,x1) => { x0.responseType = x1 },
+      _1679: x0 => x0.response,
+      _3462: () => globalThis.window,
+      _3503: x0 => x0.document,
+      _3506: x0 => x0.location,
+      _3797: x0 => x0.href,
+      _6069: x0 => x0.signal,
+      _6126: x0 => x0.baseURI,
+      _7909: x0 => x0.value,
+      _7911: x0 => x0.done,
+      _8613: x0 => x0.url,
+      _8615: x0 => x0.status,
+      _8617: x0 => x0.statusText,
+      _8618: x0 => x0.headers,
+      _8619: x0 => x0.body,
+      _12247: x0 => x0.name,
 
     };
 

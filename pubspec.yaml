@@ -20,6 +20,9 @@ dependencies:
   cupertino_icons: ^1.0.8
   package_info_plus: ^9.0.0
 
+  # Image processing for TIFF to PNG conversion
+  image: ^4.2.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

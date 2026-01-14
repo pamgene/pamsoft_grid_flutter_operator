@@ -1,16 +1,28 @@
+import 'dart:async';
+import 'dart:js_interop';
+import 'dart:typed_data';
+import 'package:web/web.dart' as web;
 import 'package:pamsoft_grid_flutter_operator/models/image_metadata.dart';
 import 'package:pamsoft_grid_flutter_operator/models/image_metadata_impl.dart';
 import 'package:pamsoft_grid_flutter_operator/models/experiment_data.dart';
 import 'package:pamsoft_grid_flutter_operator/services/image_service.dart';
+import 'package:pamsoft_grid_flutter_operator/utils/asset_helper.dart';
+import 'package:pamsoft_grid_flutter_operator/utils/tiff_converter.dart';
 
 /// Mock implementation of ImageService for development and testing.
+///
+/// Uses real TIFF files from the TIFF folder and converts them to PNG at runtime.
 class MockImageService implements ImageService {
-  // Sample image assets
-  static const List<String> _sampleAssets = [
-    'assets/images/641070511_W1_F1_T100_P94_I473_A29.png',
-    'assets/images/641070511_W1_F1_T50_P94_I472_A29.png',
-    'assets/images/641070511_W1_F1_T5_P94_I469_A29.png',
+  // Available TIFF files (maps imageId to filename)
+  static const List<String> _availableTiffs = [
+    '641070511_W1_F1_T100_P94_I473_A29.tif',
+    '641070514_W2_F1_T100_P94_I498_A30.tif',
+    '641070516_W3_F1_T100_P94_I523_A29.tif',
+    '641070612_W4_F1_T100_P94_I488_A29.tif',
   ];
+
+  // Cache for converted PNG bytes
+  final Map<String, Uint8List> _imageCache = {};
 
   // Mock grid images (representing different Well/Field combinations)
   final List<ImageMetadata> _gridImages = [];
@@ -21,50 +33,14 @@ class MockImageService implements ImageService {
   }
 
   void _initializeMockData() {
-    // Generate mock grid images for different Well/Field combinations
-    final wells = ['W1', 'W2', 'W3', 'W4'];
-    final fields = ['F1'];
-    final timePoints = ['T100', 'T50', 'T25', 'T10', 'T5'];
+    // Parse actual TIFF filenames to create grid images
+    for (final tiffFilename in _availableTiffs) {
+      final metadata = parseFilename(tiffFilename);
+      _gridImages.add(metadata.copyWith(isGridImage: true));
 
-    for (final well in wells) {
-      for (final field in fields) {
-        // Grid image is T100 (last time point, brightest)
-        final gridId = '641070511_${well}_${field}_T100_P94_I473_A29';
-        final gridImage = ImageMetadataImpl(
-          id: gridId,
-          filename: '$gridId.tif',
-          experimentId: '641070511',
-          well: well,
-          field: field,
-          timePoint: 'T100',
-          position: 'P94',
-          imageNumber: 'I473',
-          array: 'A29',
-          isGridImage: true,
-        );
-        _gridImages.add(gridImage);
-
-        // Generate time point images for this grid
-        final images = <ImageMetadata>[];
-        for (int i = 0; i < timePoints.length; i++) {
-          final time = timePoints[i];
-          final imgNum = 473 - i;
-          final id = '641070511_${well}_${field}_${time}_P94_I${imgNum}_A29';
-          images.add(ImageMetadataImpl(
-            id: id,
-            filename: '$id.tif',
-            experimentId: '641070511',
-            well: well,
-            field: field,
-            timePoint: time,
-            position: 'P94',
-            imageNumber: 'I$imgNum',
-            array: 'A29',
-            isGridImage: time == 'T100',
-          ));
-        }
-        _imagesByGrid[gridId] = images;
-      }
+      // For each grid image, create a list with just that image
+      // (in production, this would have multiple time points)
+      _imagesByGrid[metadata.id] = [metadata.copyWith(isGridImage: true)];
     }
   }
 
@@ -72,7 +48,7 @@ class MockImageService implements ImageService {
   Future<ExperimentData> loadExperimentData() async {
     await Future.delayed(const Duration(milliseconds: 500));
     return ExperimentData(
-      experimentId: '641070511',
+      experimentId: 'multi',
       gridImages: _gridImages,
       imagesByGrid: _imagesByGrid,
     );
@@ -92,13 +68,84 @@ class MockImageService implements ImageService {
 
   @override
   String getImageAssetPath(String imageId) {
-    // Cycle through sample images based on time point
-    if (imageId.contains('T100')) {
-      return _sampleAssets[0];
-    } else if (imageId.contains('T50')) {
-      return _sampleAssets[1];
-    } else {
-      return _sampleAssets[2];
+    // Return path to TIFF file (used for fallback if bytes not loaded)
+    return 'assets/images/TIFF/$imageId.tif';
+  }
+
+  @override
+  Future<Uint8List?> getImageBytes(String imageId) async {
+    // Check cache first
+    if (_imageCache.containsKey(imageId)) {
+      return _imageCache[imageId];
+    }
+
+    try {
+      // Construct URL for TIFF file
+      final tiffUrl = AssetHelper.getAssetUrl('assets/images/TIFF/$imageId.tif');
+      print('MockImageService: Fetching TIFF from $tiffUrl');
+
+      // Fetch TIFF bytes via HTTP
+      final tiffBytes = await _fetchBytes(tiffUrl);
+      if (tiffBytes == null) {
+        print('MockImageService: Failed to fetch TIFF bytes');
+        return null;
+      }
+
+      print('MockImageService: Fetched ${tiffBytes.length} bytes, converting to PNG');
+
+      // Convert TIFF to PNG
+      final pngBytes = TiffConverter.tiffToPng(tiffBytes);
+      if (pngBytes == null) {
+        print('MockImageService: Failed to convert TIFF to PNG');
+        return null;
+      }
+
+      print('MockImageService: Converted to PNG (${pngBytes.length} bytes)');
+
+      // Cache the result
+      _imageCache[imageId] = pngBytes;
+      return pngBytes;
+    } catch (e) {
+      print('MockImageService.getImageBytes error: $e');
+      return null;
+    }
+  }
+
+  /// Fetches binary data from a URL using XMLHttpRequest.
+  Future<Uint8List?> _fetchBytes(String url) async {
+    try {
+      final request = web.XMLHttpRequest();
+      request.open('GET', url, true);
+      request.responseType = 'arraybuffer';
+
+      final completer = Completer<Uint8List?>();
+
+      request.onload = ((web.Event event) {
+        if (request.status == 200) {
+          final response = request.response;
+          if (response != null) {
+            final arrayBuffer = response as JSArrayBuffer;
+            final bytes = arrayBuffer.toDart.asUint8List();
+            completer.complete(bytes);
+          } else {
+            completer.complete(null);
+          }
+        } else {
+          print('MockImageService: HTTP error ${request.status}');
+          completer.complete(null);
+        }
+      }).toJS;
+
+      request.onerror = ((web.Event event) {
+        print('MockImageService: Network error');
+        completer.complete(null);
+      }).toJS;
+
+      request.send();
+      return await completer.future;
+    } catch (e) {
+      print('MockImageService._fetchBytes error: $e');
+      return null;
     }
   }
 

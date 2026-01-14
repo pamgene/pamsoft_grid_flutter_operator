@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 /// Abstract interface for image metadata.
 abstract class ImageMetadata {
   /// Unique identifier (filename without extension).
@@ -33,8 +35,12 @@ abstract class ImageMetadata {
   /// Display name for UI (typically the filename).
   String get displayName;
 
+  /// PNG image bytes (converted from TIFF at runtime).
+  Uint8List? get imageBytes;
+
   /// Creates a copy with updated fields.
   ImageMetadata copyWith({
     bool? isGridImage,
+    Uint8List? imageBytes,
   });
 }
