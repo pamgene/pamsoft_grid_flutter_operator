@@ -5,6 +5,7 @@ import 'package:pamsoft_grid_flutter_operator/providers/image_selection_provider
 import 'package:pamsoft_grid_flutter_operator/widgets/grid_canvas.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/image_filters.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/constants.dart';
+import 'package:pamsoft_grid_flutter_operator/utils/asset_helper.dart';
 
 /// Widget for displaying the TIFF/PNG image with grid overlay.
 class ImageViewer extends StatelessWidget {
@@ -41,8 +42,8 @@ class ImageViewer extends StatelessWidget {
                         brightness: settingsProvider.brightness,
                         contrast: settingsProvider.contrast,
                       ),
-                      child: Image.asset(
-                        assetPath,
+                      child: Image.network(
+                        AssetHelper.getAssetUrl(assetPath),
                         fit: BoxFit.fill,
                         errorBuilder: (context, error, stackTrace) {
                           return Center(
