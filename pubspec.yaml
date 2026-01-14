@@ -32,5 +32,6 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  assets:
-    - assets/images/
+  # Assets are served directly from web/assets/ folder for Tercen compatibility
+  # assets:
+  #   - assets/images/
