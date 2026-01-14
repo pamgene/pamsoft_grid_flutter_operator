@@ -9,17 +9,31 @@ class FiducialPosition {
   /// Column in the grid (-ve for reference fiducials).
   final int col;
 
-  /// Base X coordinate (pixels).
+  /// Base X coordinate (pixels) - from algorithm or input data.
   final double baseX;
 
-  /// Base Y coordinate (pixels).
+  /// Base Y coordinate (pixels) - from algorithm or input data.
   final double baseY;
+
+  /// Spot diameter for rendering (from input data).
+  final double diameter;
 
   /// Whether this is a reference fiducial (vs peptide spot).
   final bool isReference;
 
-  /// Individual offset from base position (for individual dragging).
+  /// Whether this spot is marked as "bad" (quality flag).
+  final bool isBad;
+
+  /// Whether this spot is marked as "empty".
+  final bool isEmpty;
+
+  /// Whether this position was manually adjusted.
+  bool isManual;
+
+  /// Individual X offset from base position (for individual dragging).
   double individualOffsetX;
+
+  /// Individual Y offset from base position (for individual dragging).
   double individualOffsetY;
 
   FiducialPosition({
@@ -28,7 +42,11 @@ class FiducialPosition {
     required this.col,
     required this.baseX,
     required this.baseY,
+    this.diameter = 0.0,
     this.isReference = false,
+    this.isBad = false,
+    this.isEmpty = false,
+    this.isManual = false,
     this.individualOffsetX = 0,
     this.individualOffsetY = 0,
   });
@@ -37,6 +55,10 @@ class FiducialPosition {
   FiducialPosition copyWith({
     double? baseX,
     double? baseY,
+    double? diameter,
+    bool? isBad,
+    bool? isEmpty,
+    bool? isManual,
     double? individualOffsetX,
     double? individualOffsetY,
   }) {
@@ -46,7 +68,11 @@ class FiducialPosition {
       col: col,
       baseX: baseX ?? this.baseX,
       baseY: baseY ?? this.baseY,
+      diameter: diameter ?? this.diameter,
       isReference: isReference,
+      isBad: isBad ?? this.isBad,
+      isEmpty: isEmpty ?? this.isEmpty,
+      isManual: isManual ?? this.isManual,
       individualOffsetX: individualOffsetX ?? this.individualOffsetX,
       individualOffsetY: individualOffsetY ?? this.individualOffsetY,
     );
@@ -57,4 +83,7 @@ class FiducialPosition {
 
   /// Gets the Y position including individual offset.
   double get y => baseY + individualOffsetY;
+
+  /// Gets the spot radius for rendering.
+  double get radius => diameter / 2;
 }

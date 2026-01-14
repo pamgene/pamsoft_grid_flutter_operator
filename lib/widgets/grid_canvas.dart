@@ -67,15 +67,24 @@ class _GridCanvasState extends State<GridCanvas> {
     // Check if Shift key is pressed for rotation mode
     _isRotating = HardwareKeyboard.instance.isShiftPressed;
 
+    // Calculate scale factors for coordinate conversion
+    final config = gridData.configuration;
+    final scaleX = widget.containerWidth / config.imageWidth;
+    final scaleY = widget.containerHeight / config.imageHeight;
+
     // Check if we're clicking on a fiducial
     for (final fiducial in gridData.fiducials) {
-      final fiducialPos = Offset(
-        fiducial.x + gridData.globalOffsetX,
-        fiducial.y + gridData.globalOffsetY,
-      );
+      // Convert fiducial position to display coordinates
+      final displayX = (fiducial.x + gridData.globalOffsetX) * scaleX;
+      final displayY = (fiducial.y + gridData.globalOffsetY) * scaleY;
+      final fiducialPos = Offset(displayX, displayY);
 
-      if ((localPosition - fiducialPos).distance <=
-          AppConstants.fiducialHitTestRadius) {
+      // Use scaled hit test radius based on fiducial size
+      final hitRadius = fiducial.diameter > 0
+          ? (fiducial.diameter / 2) * scaleX + 4 // Add 4px for easier selection
+          : AppConstants.fiducialHitTestRadius;
+
+      if ((localPosition - fiducialPos).distance <= hitRadius) {
         _draggingFiducialId = fiducial.id;
         _lastDragPosition = localPosition;
         return;
@@ -91,25 +100,32 @@ class _GridCanvasState extends State<GridCanvas> {
     if (_lastDragPosition == null) return;
 
     final currentPosition = details.localPosition;
-    final delta = currentPosition - _lastDragPosition!;
+    final displayDelta = currentPosition - _lastDragPosition!;
     _lastDragPosition = currentPosition;
+
+    // Convert display delta to image coordinate delta
+    final config = gridData.configuration;
+    final scaleX = widget.containerWidth / config.imageWidth;
+    final scaleY = widget.containerHeight / config.imageHeight;
+    final imageDelta = Offset(displayDelta.dx / scaleX, displayDelta.dy / scaleY);
 
     if (_draggingFiducialId != null) {
       // Dragging individual fiducial
-      final constrainedDelta = _constrainDelta(delta, gridData);
+      final constrainedDelta = _constrainDelta(imageDelta, gridData);
       provider.moveFiducial(_draggingFiducialId!, constrainedDelta.dx, constrainedDelta.dy);
     } else if (_isRotating) {
       // Rotating whole grid
-      _rotateGrid(delta, currentPosition, gridData, provider);
+      _rotateGrid(displayDelta, currentPosition, gridData, provider);
     } else {
       // Dragging whole grid
-      final constrainedDelta = _constrainDelta(delta, gridData);
+      final constrainedDelta = _constrainDelta(imageDelta, gridData);
       provider.moveWholeGrid(constrainedDelta.dx, constrainedDelta.dy);
     }
   }
 
   Offset _constrainDelta(Offset delta, GridData gridData) {
-    // Get current grid bounds
+    // Get current grid bounds in image coordinates
+    final config = gridData.configuration;
     double minX = double.infinity;
     double maxX = double.negativeInfinity;
     double minY = double.infinity;
@@ -124,8 +140,8 @@ class _GridCanvasState extends State<GridCanvas> {
       maxY = y > maxY ? y : maxY;
     }
 
-    // Account for circle radius
-    final radius = AppConstants.fiducialRadius;
+    // Account for spot radius in image coordinates
+    final radius = config.spotRadius > 0 ? config.spotRadius : AppConstants.fiducialRadius;
     minX -= radius;
     maxX += radius;
     minY -= radius;
@@ -135,24 +151,28 @@ class _GridCanvasState extends State<GridCanvas> {
     double constrainedDx = delta.dx;
     double constrainedDy = delta.dy;
 
-    // Constrain to keep grid within container bounds
+    // Constrain to keep grid within image bounds (in image coordinates)
     if (minX + delta.dx < 0) {
       constrainedDx = -minX;
-    } else if (maxX + delta.dx > widget.containerWidth) {
-      constrainedDx = widget.containerWidth - maxX;
+    } else if (maxX + delta.dx > config.imageWidth) {
+      constrainedDx = config.imageWidth - maxX;
     }
 
     if (minY + delta.dy < 0) {
       constrainedDy = -minY;
-    } else if (maxY + delta.dy > widget.containerHeight) {
-      constrainedDy = widget.containerHeight - maxY;
+    } else if (maxY + delta.dy > config.imageHeight) {
+      constrainedDy = config.imageHeight - maxY;
     }
 
     return Offset(constrainedDx, constrainedDy);
   }
 
   void _rotateGrid(Offset delta, Offset currentPosition, GridData gridData, GridProvider provider) {
-    // Calculate grid center
+    // Calculate scale factor for coordinate conversion
+    final config = gridData.configuration;
+    final scaleX = widget.containerWidth / config.imageWidth;
+
+    // Calculate grid center in image coordinates
     double cx = 0;
     double cy = 0;
     final n = gridData.fiducials.length;
@@ -164,6 +184,9 @@ class _GridCanvasState extends State<GridCanvas> {
     cx /= n;
     cy /= n;
 
+    // Convert center to display coordinates for comparison with mouse position
+    final displayCx = cx * scaleX;
+
     // Calculate rotation angle (0.2 degrees per drag movement)
     double radians = (math.pi / 180) * 0.2;
 
@@ -171,15 +194,15 @@ class _GridCanvasState extends State<GridCanvas> {
     final dy = delta.dy;
     final startX = currentPosition.dx;
 
-    if (dy > 0 && startX > cx) {
+    if (dy > 0 && startX > displayCx) {
       radians *= -1;
     }
 
-    if (dy < 0 && startX < cx) {
+    if (dy < 0 && startX < displayCx) {
       radians *= -1;
     }
 
-    // Apply rotation to all fiducials
+    // Apply rotation to all fiducials (using image coordinates for center)
     provider.rotateWholeGrid(radians, cx, cy);
   }
 
@@ -212,13 +235,27 @@ class GridPainter extends CustomPainter {
     // Clip to container bounds
     canvas.clipRect(Rect.fromLTWH(0, 0, containerWidth, containerHeight));
 
-    for (final fiducial in gridData.fiducials) {
-      final center = Offset(
-        fiducial.x + gridData.globalOffsetX,
-        fiducial.y + gridData.globalOffsetY,
-      );
+    // Calculate scale factor from image coordinates to display coordinates
+    final config = gridData.configuration;
+    final scaleX = containerWidth / config.imageWidth;
+    final scaleY = containerHeight / config.imageHeight;
 
-      canvas.drawCircle(center, AppConstants.fiducialRadius, paint);
+    for (final fiducial in gridData.fiducials) {
+      // Scale position from image coordinates to display coordinates
+      final displayX = (fiducial.x + gridData.globalOffsetX) * scaleX;
+      final displayY = (fiducial.y + gridData.globalOffsetY) * scaleY;
+      final center = Offset(displayX, displayY);
+
+      // Use fiducial's diameter if available, otherwise use default
+      double radius;
+      if (fiducial.diameter > 0) {
+        // Scale the radius from image coordinates to display coordinates
+        radius = (fiducial.diameter / 2) * scaleX;
+      } else {
+        radius = AppConstants.fiducialRadius;
+      }
+
+      canvas.drawCircle(center, radius, paint);
     }
   }
 

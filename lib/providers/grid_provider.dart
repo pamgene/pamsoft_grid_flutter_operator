@@ -124,6 +124,7 @@ class GridProvider extends ChangeNotifier {
       final defaultGrid = await _gridService.loadDefaultGrid();
       _currentGridData = GridData(
         gridImageId: _currentGridImageId!,
+        configuration: defaultGrid.configuration,
         fiducials: defaultGrid.fiducials,
         globalOffsetX: 0,
         globalOffsetY: 0,

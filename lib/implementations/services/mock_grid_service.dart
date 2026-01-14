@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:pamsoft_grid_flutter_operator/models/grid_data.dart';
+import 'package:pamsoft_grid_flutter_operator/models/grid_configuration.dart';
 import 'package:pamsoft_grid_flutter_operator/models/fiducial_position.dart';
 import 'package:pamsoft_grid_flutter_operator/models/enums.dart';
 import 'package:pamsoft_grid_flutter_operator/services/grid_service.dart';
@@ -11,24 +12,14 @@ class MockGridService implements GridService {
   final Map<String, GridStatus> _statusCache = {};
   final Random _random = Random(42); // Seeded for consistency
 
-  // Control file grid structure (14x14 peptides + 8 reference fiducials)
-  static const int gridRows = 14;
-  static const int gridCols = 14;
-
-  // Calculate grid dimensions based on display container size
-  // The grid should be centered and sized to match the visible peptide array
-  static double get _containerWidth => AppConstants.imageContainerWidth;
-  static double get _containerHeight => AppConstants.imageContainerHeight;
-
-  // Grid cell spacing - uniform for square grid
-  // Y-axis reduced by 10% from previous, X-axis matches Y-axis for square grid
-  static double get _cellSpacing => (_containerHeight * 0.54) / gridRows; // 0.60 * 0.90 = 0.54
-  static double get _cellWidth => _cellSpacing;
-  static double get _cellHeight => _cellSpacing;
-
-  // Grid starting position - centered in the container
-  static double get _gridOffsetX => (_containerWidth - (gridCols * _cellWidth)) / 2;
-  static double get _gridOffsetY => (_containerHeight - (gridRows * _cellHeight)) / 2;
+  /// Creates a default grid configuration for the current image dimensions.
+  /// Uses Evolve3 parameters by default.
+  GridConfiguration _createDefaultConfiguration() {
+    return GridConfiguration.evolve3(
+      imageWidth: AppConstants.imageOriginalWidth,
+      imageHeight: AppConstants.imageOriginalHeight,
+    );
+  }
 
   @override
   Future<GridData> loadGridData(String gridImageId) async {
@@ -47,13 +38,18 @@ class MockGridService implements GridService {
   }
 
   GridData _generateMockFittedGrid(String gridImageId) {
+    final config = _createDefaultConfiguration();
+    final rowMidpoint = (config.gridRows - 1) / 2;
+    final colMidpoint = (config.gridCols - 1) / 2;
+
     final fiducials = <FiducialPosition>[];
 
-    // Generate 14x14 peptide grid
-    for (int row = 0; row < gridRows; row++) {
-      for (int col = 0; col < gridCols; col++) {
-        final baseX = _gridOffsetX + (col * _cellWidth);
-        final baseY = _gridOffsetY + (row * _cellHeight);
+    // Generate 14x14 peptide grid using configuration-based positioning
+    for (int row = 0; row < config.gridRows; row++) {
+      for (int col = 0; col < config.gridCols; col++) {
+        // Calculate position relative to center
+        final baseX = config.centerX + config.spotPitch * (col - colMidpoint);
+        final baseY = config.centerY + config.spotPitch * (row - rowMidpoint);
 
         // Add small random offset to simulate algorithm fit (reduced variance)
         final offsetX = (_random.nextDouble() - 0.5) * 2;
@@ -65,6 +61,7 @@ class MockGridService implements GridService {
           col: col,
           baseX: baseX + offsetX,
           baseY: baseY + offsetY,
+          diameter: config.spotDiameter,
           isReference: false,
         ));
       }
@@ -75,17 +72,17 @@ class MockGridService implements GridService {
       (row: -1, col: -1),
       (row: -2, col: -1),
       (row: -3, col: -1),
-      (row: -1, col: 14),
-      (row: -2, col: 14),
-      (row: -3, col: 14),
-      (row: 14, col: -1),
-      (row: 14, col: 14),
+      (row: -1, col: config.gridCols),
+      (row: -2, col: config.gridCols),
+      (row: -3, col: config.gridCols),
+      (row: config.gridRows, col: -1),
+      (row: config.gridRows, col: config.gridCols),
     ];
 
     for (int i = 0; i < refPositions.length; i++) {
       final ref = refPositions[i];
-      final baseX = _gridOffsetX + (ref.col * _cellWidth);
-      final baseY = _gridOffsetY + (ref.row * _cellHeight);
+      final baseX = config.centerX + config.spotPitch * (ref.col - colMidpoint);
+      final baseY = config.centerY + config.spotPitch * (ref.row - rowMidpoint);
 
       fiducials.add(FiducialPosition(
         id: 'ref_$i',
@@ -93,12 +90,14 @@ class MockGridService implements GridService {
         col: ref.col,
         baseX: baseX,
         baseY: baseY,
+        diameter: config.spotDiameter,
         isReference: true,
       ));
     }
 
     return GridData(
       gridImageId: gridImageId,
+      configuration: config,
       fiducials: fiducials,
       globalOffsetX: 0,
       globalOffsetY: 0,
@@ -116,17 +115,25 @@ class MockGridService implements GridService {
   Future<GridData> loadDefaultGrid() async {
     await Future.delayed(const Duration(milliseconds: 200));
 
+    final config = _createDefaultConfiguration();
+    final rowMidpoint = (config.gridRows - 1) / 2;
+    final colMidpoint = (config.gridCols - 1) / 2;
+
     // Return grid based purely on control file (no algorithm offsets)
     final fiducials = <FiducialPosition>[];
 
-    for (int row = 0; row < gridRows; row++) {
-      for (int col = 0; col < gridCols; col++) {
+    for (int row = 0; row < config.gridRows; row++) {
+      for (int col = 0; col < config.gridCols; col++) {
+        final baseX = config.centerX + config.spotPitch * (col - colMidpoint);
+        final baseY = config.centerY + config.spotPitch * (row - rowMidpoint);
+
         fiducials.add(FiducialPosition(
           id: 'peptide_${row}_$col',
           row: row,
           col: col,
-          baseX: _gridOffsetX + (col * _cellWidth),
-          baseY: _gridOffsetY + (row * _cellHeight),
+          baseX: baseX,
+          baseY: baseY,
+          diameter: config.spotDiameter,
           isReference: false,
         ));
       }
@@ -137,27 +144,32 @@ class MockGridService implements GridService {
       (row: -1, col: -1),
       (row: -2, col: -1),
       (row: -3, col: -1),
-      (row: -1, col: 14),
-      (row: -2, col: 14),
-      (row: -3, col: 14),
-      (row: 14, col: -1),
-      (row: 14, col: 14),
+      (row: -1, col: config.gridCols),
+      (row: -2, col: config.gridCols),
+      (row: -3, col: config.gridCols),
+      (row: config.gridRows, col: -1),
+      (row: config.gridRows, col: config.gridCols),
     ];
 
     for (int i = 0; i < refPositions.length; i++) {
       final ref = refPositions[i];
+      final baseX = config.centerX + config.spotPitch * (ref.col - colMidpoint);
+      final baseY = config.centerY + config.spotPitch * (ref.row - rowMidpoint);
+
       fiducials.add(FiducialPosition(
         id: 'ref_$i',
         row: ref.row,
         col: ref.col,
-        baseX: _gridOffsetX + (ref.col * _cellWidth),
-        baseY: _gridOffsetY + (ref.row * _cellHeight),
+        baseX: baseX,
+        baseY: baseY,
+        diameter: config.spotDiameter,
         isReference: true,
       ));
     }
 
     return GridData(
       gridImageId: 'default',
+      configuration: config,
       fiducials: fiducials,
       globalOffsetX: 0,
       globalOffsetY: 0,
