@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:pamsoft_grid_flutter_operator/core/theme/app_theme.dart';
 import 'package:pamsoft_grid_flutter_operator/di/service_locator.dart';
 import 'package:pamsoft_grid_flutter_operator/providers/grid_provider.dart';
 import 'package:pamsoft_grid_flutter_operator/providers/image_selection_provider.dart';
@@ -31,20 +32,8 @@ class PamsoftGridCheckerApp extends StatelessWidget {
           return MaterialApp(
             title: AppConstants.appTitle,
             debugShowCheckedModeBanner: false,
-            theme: ThemeData(
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: Colors.green,
-                brightness: Brightness.light,
-              ),
-              useMaterial3: true,
-            ),
-            darkTheme: ThemeData(
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: Colors.green,
-                brightness: Brightness.dark,
-              ),
-              useMaterial3: true,
-            ),
+            theme: AppTheme.light,
+            darkTheme: AppTheme.dark,
             themeMode: themeProvider.themeMode,
             home: const HomeScreen(),
           );

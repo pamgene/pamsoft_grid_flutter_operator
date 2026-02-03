@@ -15,6 +15,9 @@ migrate_working_dir/
 # Claude Code settings
 .claude/
 
+# External style references (cloned at runtime)
+_local/
+
 # IntelliJ related
 *.iml
 *.ipr

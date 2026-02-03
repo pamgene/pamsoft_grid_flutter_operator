@@ -9,6 +9,9 @@ class ImageList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Consumer2<ImageSelectionProvider, SettingsProvider>(
       builder: (context, imageProvider, settingsProvider, child) {
         final images = imageProvider.currentGridImages;
@@ -28,67 +31,56 @@ class ImageList extends StatelessWidget {
 
         visibleIndices = List.generate(endIndex - startIndex, (i) => startIndex + i);
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: ListView.builder(
-                itemCount: visibleIndices.length,
-                itemBuilder: (context, index) {
-                  final imageIndex = visibleIndices[index];
-                  final image = images[imageIndex];
-                  final isSelected = imageIndex == selectedIndex;
-                  final isGridImage = image.isGridImage;
+        return ListView.builder(
+          itemCount: visibleIndices.length,
+          itemBuilder: (context, index) {
+            final imageIndex = visibleIndices[index];
+            final image = images[imageIndex];
+            final isSelected = imageIndex == selectedIndex;
+            final isGridImage = image.isGridImage;
 
-                  return ListTile(
-                    dense: true,
-                    selected: isSelected,
-                    selectedTileColor: Theme.of(context).colorScheme.primaryContainer,
-                    leading: isGridImage
-                        ? Container(
-                            width: 24,
-                            height: 24,
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary,
-                              borderRadius: BorderRadius.circular(4),
+            return Tooltip(
+              message: image.displayName,
+              waitDuration: const Duration(milliseconds: 500),
+              child: ListTile(
+                dense: true,
+                selected: isSelected,
+                selectedTileColor: colorScheme.primaryContainer,
+                leading: isGridImage
+                    ? Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          color: colorScheme.primary,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'G',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: colorScheme.onPrimary,
+                              fontWeight: FontWeight.bold,
                             ),
-                            child: const Center(
-                              child: Text(
-                                'G',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ),
-                          )
-                        : const SizedBox(width: 24),
-                    title: Text(
-                      image.displayName,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: isGridImage ? FontWeight.bold : FontWeight.normal,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    onTap: () {
-                      imageProvider.setImageIndex(imageIndex);
-                    },
-                  );
+                          ),
+                        ),
+                      )
+                    : const SizedBox(width: 24),
+                title: Text(
+                  image.displayName,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.brightness == Brightness.dark
+                        ? Colors.white
+                        : colorScheme.onSurface,
+                    fontWeight: isGridImage ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: () {
+                  imageProvider.setImageIndex(imageIndex);
                 },
               ),
-            ),
-            // Pagination info
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Text(
-                'Showing ${visibleIndices.length} of ${images.length} entries',
-                style: Theme.of(context).textTheme.bodySmall,
-                textAlign: TextAlign.center,
-              ),
-            ),
-          ],
+            );
+          },
         );
       },
     );

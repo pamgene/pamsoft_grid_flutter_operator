@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
-import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:pamsoft_grid_flutter_operator/core/theme/app_spacing.dart';
+import 'package:pamsoft_grid_flutter_operator/core/version/version_info.dart';
 import 'package:pamsoft_grid_flutter_operator/providers/grid_provider.dart';
 import 'package:pamsoft_grid_flutter_operator/providers/image_selection_provider.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/constants.dart';
+import 'package:pamsoft_grid_flutter_operator/presentation/widgets/app_shell.dart';
+import 'package:pamsoft_grid_flutter_operator/presentation/widgets/left_panel/left_panel.dart';
 import 'package:pamsoft_grid_flutter_operator/widgets/grid_dropdown.dart';
 import 'package:pamsoft_grid_flutter_operator/widgets/navigation_buttons.dart';
 import 'package:pamsoft_grid_flutter_operator/widgets/image_list.dart';
@@ -13,7 +18,6 @@ import 'package:pamsoft_grid_flutter_operator/widgets/image_viewer.dart';
 import 'package:pamsoft_grid_flutter_operator/widgets/status_indicator.dart';
 import 'package:pamsoft_grid_flutter_operator/widgets/brightness_contrast_sliders.dart';
 import 'package:pamsoft_grid_flutter_operator/widgets/action_buttons.dart';
-import 'package:pamsoft_grid_flutter_operator/widgets/theme_toggle.dart';
 
 /// Main home screen of the application.
 class HomeScreen extends StatefulWidget {
@@ -25,22 +29,13 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final FocusNode _focusNode = FocusNode();
-  String _version = '';
 
   @override
   void initState() {
     super.initState();
-    // Load version and experiment data when screen initializes
+    // Load experiment data when screen initializes
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadVersion();
       _loadData();
-    });
-  }
-
-  Future<void> _loadVersion() async {
-    final packageInfo = await PackageInfo.fromPlatform();
-    setState(() {
-      _version = packageInfo.version;
     });
   }
 
@@ -94,117 +89,136 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return KeyboardListener(
       focusNode: _focusNode,
       autofocus: true,
       onKeyEvent: _handleKeyEvent,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(AppConstants.appTitle),
-              if (_version.isNotEmpty) ...[
-                const SizedBox(width: 8),
-                Text(
-                  'v$_version',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.normal,
-                    color: Colors.white70,
-                  ),
-                ),
-              ],
-            ],
-          ),
-          backgroundColor: const Color(0xFF005f75),
-          foregroundColor: Colors.white,
-          actions: const [
-            ThemeToggle(),
-            SizedBox(width: 8),
-          ],
-        ),
-        body: Consumer<ImageSelectionProvider>(
-          builder: (context, imageProvider, child) {
-            if (imageProvider.isLoading) {
-              return const Center(
+      child: Consumer<ImageSelectionProvider>(
+        builder: (context, imageProvider, child) {
+          if (imageProvider.isLoading) {
+            return Scaffold(
+              backgroundColor: colorScheme.surfaceContainerHighest,
+              body: const Center(
                 child: CircularProgressIndicator(),
-              );
-            }
+              ),
+            );
+          }
 
-            if (imageProvider.error != null) {
-              return Center(
+          if (imageProvider.error != null) {
+            return Scaffold(
+              backgroundColor: colorScheme.surfaceContainerHighest,
+              body: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                    const SizedBox(height: 16),
-                    Text('Error: ${imageProvider.error}'),
-                    const SizedBox(height: 16),
+                    Icon(
+                      Icons.error_outline,
+                      size: 48,
+                      color: colorScheme.error,
+                    ),
+                    const SizedBox(height: AppSpacing.md),
+                    Text(
+                      'Error: ${imageProvider.error}',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: AppSpacing.md),
                     ElevatedButton(
                       onPressed: _loadData,
                       child: const Text('Retry'),
                     ),
                   ],
                 ),
-              );
-            }
-
-            return Row(
-              children: [
-                // Left panel
-                SizedBox(
-                  width: AppConstants.leftPanelWidth,
-                  child: _buildLeftPanel(context, imageProvider),
-                ),
-                // Divider
-                const VerticalDivider(width: 1),
-                // Main content area
-                Expanded(
-                  child: _buildMainContent(context),
-                ),
-              ],
+              ),
             );
-          },
-        ),
+          }
+
+          return AppShell(
+            appTitle: AppConstants.appTitle,
+            appIcon: FontAwesomeIcons.grip,
+            sections: _buildSections(context),
+            content: _buildMainContent(context),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildLeftPanel(BuildContext context, ImageSelectionProvider imageProvider) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Grid Image dropdown
-          const GridDropdown(),
-          const SizedBox(height: 16),
-
-          // Grid navigation buttons
-          GridNavigationButtons(),
-          const SizedBox(height: 8),
-
-          // Image navigation buttons
-          const ImageNavigationButtons(),
-          const SizedBox(height: 16),
-
-          // Image list
-          Expanded(
-            child: Card(
-              child: const ImageList(),
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // Pagination controls
-          const PaginationControls(),
-        ],
+  List<LeftPanelSection> _buildSections(BuildContext context) {
+    return [
+      // NAVIGATION section
+      LeftPanelSection(
+        icon: FontAwesomeIcons.compass,
+        label: 'Navigation',
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const GridDropdown(),
+            const SizedBox(height: AppSpacing.md),
+            GridNavigationButtons(),
+            const SizedBox(height: AppSpacing.sm),
+            const ImageNavigationButtons(),
+          ],
+        ),
       ),
-    );
+
+      // IMAGES section
+      LeftPanelSection(
+        icon: FontAwesomeIcons.images,
+        label: 'Images',
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const PaginationControls(),
+            const SizedBox(height: AppSpacing.sm),
+            // Image list with fixed height
+            SizedBox(
+              height: 300,
+              child: Card(
+                margin: EdgeInsets.zero,
+                child: const ImageList(),
+              ),
+            ),
+          ],
+        ),
+      ),
+
+      // DISPLAY section
+      LeftPanelSection(
+        icon: FontAwesomeIcons.sliders,
+        label: 'Display',
+        content: const Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            BrightnessSlider(),
+            SizedBox(height: AppSpacing.md),
+            ContrastSlider(),
+          ],
+        ),
+      ),
+
+      // ACTIONS section
+      LeftPanelSection(
+        icon: FontAwesomeIcons.bolt,
+        label: 'Actions',
+        content: const ActionButtons(),
+      ),
+
+      // INFO section (required)
+      LeftPanelSection(
+        icon: FontAwesomeIcons.circleInfo,
+        label: 'Info',
+        content: _buildInfoContent(context),
+      ),
+    ];
   }
 
   Widget _buildMainContent(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Consumer2<ImageSelectionProvider, GridProvider>(
       builder: (context, imageProvider, gridProvider, child) {
         final gridImage = imageProvider.currentGridImage;
@@ -213,15 +227,20 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             // Title bar with status indicator
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.sm,
+              ),
               child: Row(
                 children: [
                   StatusIndicator(status: gridProvider.currentStatus),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.sm),
                   Expanded(
                     child: Text(
                       gridImage?.displayName ?? 'No grid selected',
-                      style: Theme.of(context).textTheme.titleMedium,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -231,22 +250,25 @@ class _HomeScreenState extends State<HomeScreen> {
 
             // Rotation hint
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.xs,
+              ),
               child: Row(
                 children: [
                   Tooltip(
                     message: 'Hold shift to rotate grid',
                     child: Icon(
                       Icons.refresh,
-                      size: 16,
-                      color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6),
+                      size: 14,
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: AppSpacing.xs),
                   Text(
                     'Hold Shift to rotate',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -254,33 +276,60 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
 
             // Image viewer
-            Expanded(
-              child: const ImageViewer(),
-            ),
-
-            // Controls at bottom
-            Container(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  // Brightness and Contrast sliders
-                  Row(
-                    children: [
-                      Expanded(child: const BrightnessSlider()),
-                      const SizedBox(width: 32),
-                      Expanded(child: const ContrastSlider()),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Action buttons
-                  const ActionButtons(),
-                ],
-              ),
+            const Expanded(
+              child: ImageViewer(),
             ),
           ],
         );
       },
+    );
+  }
+
+  Widget _buildInfoContent(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (VersionInfo.gitVersion.isNotEmpty) ...[
+          Row(
+            children: [
+              Text(
+                'GitHub:',
+                style: theme.textTheme.labelMedium,
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              Expanded(
+                child: InkWell(
+                  onTap: () async {
+                    final uri = Uri.parse(VersionInfo.gitReleaseUrl);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  },
+                  child: Text(
+                    VersionInfo.gitVersion,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: colorScheme.primary,
+                      decoration: TextDecoration.underline,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ] else ...[
+          Text(
+            'Development build',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

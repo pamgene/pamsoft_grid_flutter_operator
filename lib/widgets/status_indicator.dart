@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:pamsoft_grid_flutter_operator/core/theme/app_colors.dart';
+import 'package:pamsoft_grid_flutter_operator/core/theme/app_spacing.dart';
 import 'package:pamsoft_grid_flutter_operator/models/enums.dart';
-import 'package:pamsoft_grid_flutter_operator/utils/constants.dart';
 
-/// Status indicator widget showing green (processed) or yellow (modified).
+/// Status indicator widget showing green (processed) or amber (modified).
+///
+/// Uses Tercen semantic colours:
+/// - Processed: success green (#047857)
+/// - Modified: warning amber (#B45309)
 class StatusIndicator extends StatelessWidget {
   final GridStatus status;
 
@@ -14,13 +19,13 @@ class StatusIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: AppConstants.statusIndicatorSize,
-      height: AppConstants.statusIndicatorSize,
+      width: 14,
+      height: 14,
       decoration: BoxDecoration(
         color: status == GridStatus.processed
-            ? AppConstants.statusProcessedColor
-            : AppConstants.statusModifiedColor,
-        borderRadius: BorderRadius.circular(2),
+            ? AppColors.success
+            : AppColors.warning,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
       ),
     );
   }
