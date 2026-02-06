@@ -213,12 +213,72 @@ class TercenImageService implements ImageService {
       depth++;
     }
 
-    if (values.isEmpty) {
-      print('❌ [Strategy 1] No .documentId found in InMemoryTable');
-      throw Exception('No .documentId found in InMemoryTable');
+    // If JSON parsing succeeded, return the values
+    if (values.isNotEmpty) {
+      print('✓ [Strategy 1] Found ${values.length} documentId(s) from JSON parsing: ${values.join(", ")}');
+      return values.toList();
     }
 
-    return values.toList();
+    // Fallback: Use tableSchemaService with query.columnHash (like ps12 app)
+    print('📋 [Strategy 1] JSON parsing failed, trying tableSchemaService with query.columnHash...');
+
+    final query = cubeTask.query;
+    if (query == null) {
+      print('❌ [Strategy 1] Task has no query');
+      throw Exception('Task has no query');
+    }
+
+    final columnHash = query.columnHash;
+    if (columnHash == null || columnHash.isEmpty) {
+      print('❌ [Strategy 1] Query has no columnHash');
+      throw Exception('Query has no columnHash');
+    }
+
+    print('📋 [Strategy 1] Using columnHash: $columnHash');
+
+    // Get column schema
+    final tableSchemaService = _factory.tableSchemaService;
+    final columnSchema = await tableSchemaService.get(columnHash);
+
+    print('📋 [Strategy 1] Column schema has ${columnSchema.columns.length} columns');
+    final columnNames = columnSchema.columns.map((col) => col.name).toList();
+    print('📋 [Strategy 1] Column names: ${columnNames.join(", ")}');
+
+    // Check for .documentId column
+    final dotDocIdColumn = columnSchema.columns.where((col) => col.name == '.documentId').firstOrNull;
+
+    if (dotDocIdColumn == null) {
+      print('❌ [Strategy 1] No .documentId column found in schema');
+      throw Exception('No .documentId column found in schema');
+    }
+
+    print('📋 [Strategy 1] Found .documentId column, reading data...');
+
+    // Select the .documentId column data
+    final columnData = await tableSchemaService.select(columnHash, ['.documentId'], 0, 1);
+
+    if (columnData.nRows == 0) {
+      print('❌ [Strategy 1] Table has no rows');
+      throw Exception('Table has no rows');
+    }
+
+    print('📋 [Strategy 1] Retrieved ${columnData.nRows} rows');
+
+    // Extract .documentId value
+    final dotDocIdMatches = columnData.columns.where((c) => c.name == '.documentId');
+    if (dotDocIdMatches.isNotEmpty) {
+      final dotDocIdColData = dotDocIdMatches.first;
+      if (dotDocIdColData.values != null && dotDocIdColData.values.isNotEmpty) {
+        final documentIdValue = dotDocIdColData.values.first?.toString();
+        if (documentIdValue != null && documentIdValue.isNotEmpty) {
+          print('✓ [Strategy 1] Found .documentId from tableSchemaService: $documentIdValue');
+          return [documentIdValue];
+        }
+      }
+    }
+
+    print('❌ [Strategy 1] No .documentId value found in column data');
+    throw Exception('No .documentId value found in column data');
   }
 
   /// Normalizes a document ID by removing dashes and converting to lowercase.
