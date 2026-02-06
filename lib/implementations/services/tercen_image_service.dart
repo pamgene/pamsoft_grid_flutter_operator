@@ -6,6 +6,7 @@ import 'package:pamsoft_grid_flutter_operator/models/experiment_data.dart';
 import 'package:pamsoft_grid_flutter_operator/services/image_service.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/tercen_url_parser.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/tiff_converter.dart';
+import 'package:pamsoft_grid_flutter_operator/utils/document_id_resolver.dart';
 import 'package:sci_tercen_client/sci_client_service_factory.dart';
 import 'package:sci_tercen_client/sci_client.dart' hide ServiceFactory;
 
@@ -66,110 +67,20 @@ class TercenImageService implements ImageService {
 
   Future<List<String>> _getDocumentIds() async {
     try {
-      print('📋 Getting documentIds from task...');
-      final taskService = _factory.taskService;
+      print('📋 Resolving document IDs using hierarchical strategy...');
 
-      // Get current task
-      if (_urlParser.taskId == null) {
-        throw Exception('No taskId found in URL');
+      // Use DocumentIdResolver with fallback strategies
+      final resolver = DocumentIdResolver(_urlParser);
+      final resolvedIds = await resolver.resolveDocumentId();
+
+      if (resolvedIds == null || resolvedIds.documentId == null) {
+        throw Exception('Failed to resolve document ID using all strategies');
       }
 
-      print('📋 Fetching task: ${_urlParser.taskId}');
-      final task = await taskService.get(_urlParser.taskId!);
-      print('✓ Got task type: ${task.runtimeType}');
+      print('✓ Resolved document ID: ${resolvedIds.documentId}');
 
-      // Handle both RunWebAppTask and direct CubeQueryTask
-      CubeQueryTask cubeTask;
-
-      if (task is CubeQueryTask) {
-        // Direct CubeQueryTask (common in Data Steps)
-        print('✓ Task is directly a CubeQueryTask');
-        cubeTask = task as CubeQueryTask;
-      } else if (task is RunWebAppTask) {
-        // RunWebAppTask wrapping a CubeQueryTask
-        print('✓ Task is RunWebAppTask, fetching wrapped CubeQueryTask');
-        final webAppTask = task as RunWebAppTask;
-        if (webAppTask.cubeQueryTaskId.isEmpty) {
-          throw Exception('No cubeQueryTaskId in RunWebAppTask');
-        }
-
-        print('📋 Fetching cube query task: ${webAppTask.cubeQueryTaskId}');
-        final wrappedTask = await taskService.get(webAppTask.cubeQueryTaskId);
-        print('✓ Got cube task type: ${wrappedTask.runtimeType}');
-
-        if (wrappedTask is! CubeQueryTask) {
-          throw Exception('Wrapped task is not CubeQueryTask, got ${wrappedTask.runtimeType}');
-        }
-
-        cubeTask = wrappedTask as CubeQueryTask;
-      } else {
-        throw Exception('Task is neither RunWebAppTask nor CubeQueryTask, it is ${task.runtimeType}');
-      }
-
-      print('📋 Extracting .documentId from task JSON...');
-      // Use Direct JSON extraction to get .documentId
-      final taskJson = cubeTask.toJson();
-      final queryJson = taskJson['query'] as Map?;
-
-      if (queryJson == null) {
-        throw Exception('Task has no query in JSON');
-      }
-
-      if (queryJson['relation'] == null) {
-        throw Exception('Task query has no relation');
-      }
-
-      final documentIds = <String>{};
-      var currentRelation = queryJson['relation'] as Map?;
-      var relationDepth = 0;
-
-      // Navigate through relation structure to find InMemoryTable
-      while (currentRelation != null) {
-        relationDepth++;
-        print('📋 Checking relation depth $relationDepth, kind: ${currentRelation['kind']}');
-
-        if (currentRelation['kind'] == 'InMemoryRelation' &&
-            currentRelation['inMemoryTable'] != null) {
-
-          final inMemoryTable = currentRelation['inMemoryTable'] as Map;
-          final columns = inMemoryTable['columns'] as List?;
-
-          if (columns != null) {
-            print('📋 Found InMemoryTable with ${columns.length} columns');
-
-            for (final col in columns) {
-              final colMap = col as Map;
-              final name = colMap['name'] as String?;
-
-              if (name == '.documentId') {
-                final values = colMap['values'] as List?;
-                print('✓ Found .documentId column with ${values?.length ?? 0} values');
-
-                if (values != null) {
-                  for (final value in values) {
-                    final docId = value?.toString();
-                    if (docId != null && docId.isNotEmpty) {
-                      documentIds.add(docId);
-                    }
-                  }
-                }
-                break;
-              }
-            }
-          }
-          break;
-        }
-
-        // Navigate deeper into relation tree
-        currentRelation = currentRelation['relation'] as Map?;
-      }
-
-      if (documentIds.isEmpty) {
-        throw Exception('No .documentId found in task JSON after checking $relationDepth relation levels');
-      }
-
-      print('✓ Extracted ${documentIds.length} unique .documentId(s): ${documentIds.join(", ")}');
-      return documentIds.toList();
+      // Return as single-item list (we only have one documentId)
+      return [resolvedIds.documentId!];
     } catch (e, stackTrace) {
       print('❌ ERROR in _getDocumentIds: $e');
       print('Stack trace: $stackTrace');
