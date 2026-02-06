@@ -26,16 +26,22 @@ class TercenGridService implements GridService {
       return _gridDataCache[gridImageId]!;
     }
 
-    print('🔍 Loading grid data from Tercen for $gridImageId');
+    try {
+      print('🔍 Loading grid data from Tercen for $gridImageId');
 
-    // Load table data from Tercen
-    final gridData = await _loadFromTercen(gridImageId);
+      // Load table data from Tercen
+      final gridData = await _loadFromTercen(gridImageId);
 
-    _gridDataCache[gridImageId] = gridData;
-    _statusCache[gridImageId] = GridStatus.processed;
+      _gridDataCache[gridImageId] = gridData;
+      _statusCache[gridImageId] = GridStatus.processed;
 
-    print('✓ Loaded ${gridData.fiducials.length} fiducials from Tercen');
-    return gridData;
+      print('✓ Loaded ${gridData.fiducials.length} fiducials from Tercen');
+      return gridData;
+    } catch (e, stackTrace) {
+      print('❌ ERROR loading grid data from Tercen: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
   }
 
   Future<GridData> _loadFromTercen(String gridImageId) async {

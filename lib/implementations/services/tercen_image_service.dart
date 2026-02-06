@@ -29,108 +29,142 @@ class TercenImageService implements ImageService {
       return _cachedData!;
     }
 
-    print('🔍 Loading experiment data from Tercen');
+    try {
+      print('🔍 Loading experiment data from Tercen');
 
-    // Get the documentId from column metadata
-    final documentIds = await _getDocumentIds();
+      // Get the documentId from column metadata
+      final documentIds = await _getDocumentIds();
 
-    if (documentIds.isEmpty) {
-      throw Exception('No documentId found in column metadata');
+      if (documentIds.isEmpty) {
+        throw Exception('No documentId found in column metadata');
+      }
+
+      print('📦 Found ${documentIds.length} unique documentId(s)');
+
+      // Download and extract images from each document
+      final allImages = <ImageMetadata>[];
+
+      for (final docId in documentIds) {
+        print('📥 Downloading images for documentId: $docId');
+        final images = await _downloadAndExtractImages(docId);
+        allImages.addAll(images);
+      }
+
+      print('✓ Loaded ${allImages.length} images total');
+
+      // Build experiment data structure
+      final experimentData = _buildExperimentData(allImages);
+
+      _cachedData = experimentData;
+      return experimentData;
+    } catch (e, stackTrace) {
+      print('❌ ERROR loading experiment data from Tercen: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
     }
-
-    print('📦 Found ${documentIds.length} unique documentId(s)');
-
-    // Download and extract images from each document
-    final allImages = <ImageMetadata>[];
-
-    for (final docId in documentIds) {
-      print('📥 Downloading images for documentId: $docId');
-      final images = await _downloadAndExtractImages(docId);
-      allImages.addAll(images);
-    }
-
-    print('✓ Loaded ${allImages.length} images total');
-
-    // Build experiment data structure
-    final experimentData = _buildExperimentData(allImages);
-
-    _cachedData = experimentData;
-    return experimentData;
   }
 
   Future<List<String>> _getDocumentIds() async {
-    final taskService = _factory.taskService;
+    try {
+      print('📋 Getting documentIds from task...');
+      final taskService = _factory.taskService;
 
-    // Get current task
-    if (_urlParser.taskId == null) {
-      throw Exception('No taskId found in URL');
-    }
-
-    final task = await taskService.get(_urlParser.taskId!);
-    if (task is! RunWebAppTask) {
-      throw Exception('Task is not RunWebAppTask');
-    }
-
-    final webAppTask = task as RunWebAppTask;
-    if (webAppTask.cubeQueryTaskId.isEmpty) {
-      throw Exception('No cubeQueryTaskId in RunWebAppTask');
-    }
-
-    // Get the cube query task
-    final cubeTask = await taskService.get(webAppTask.cubeQueryTaskId);
-    if (cubeTask is! CubeQueryTask) {
-      throw Exception('CubeQueryTask not found');
-    }
-
-    // Use Direct JSON extraction to get .documentId
-    final taskJson = cubeTask.toJson();
-    final queryJson = taskJson['query'] as Map?;
-
-    if (queryJson == null || queryJson['relation'] == null) {
-      throw Exception('Task has no query relation');
-    }
-
-    final documentIds = <String>{};
-    var currentRelation = queryJson['relation'] as Map?;
-
-    // Navigate through relation structure to find InMemoryTable
-    while (currentRelation != null) {
-      if (currentRelation['kind'] == 'InMemoryRelation' &&
-          currentRelation['inMemoryTable'] != null) {
-
-        final inMemoryTable = currentRelation['inMemoryTable'] as Map;
-        final columns = inMemoryTable['columns'] as List?;
-
-        if (columns != null) {
-          for (final col in columns) {
-            final colMap = col as Map;
-            final name = colMap['name'] as String?;
-            final values = colMap['values'] as List?;
-
-            if (name == '.documentId' && values != null) {
-              for (final value in values) {
-                final docId = value?.toString();
-                if (docId != null && docId.isNotEmpty) {
-                  documentIds.add(docId);
-                }
-              }
-              break;
-            }
-          }
-        }
-        break;
+      // Get current task
+      if (_urlParser.taskId == null) {
+        throw Exception('No taskId found in URL');
       }
 
-      // Navigate deeper into relation tree
-      currentRelation = currentRelation['relation'] as Map?;
-    }
+      print('📋 Fetching task: ${_urlParser.taskId}');
+      final task = await taskService.get(_urlParser.taskId!);
+      print('✓ Got task type: ${task.runtimeType}');
 
-    if (documentIds.isEmpty) {
-      throw Exception('No .documentId found in task JSON');
-    }
+      if (task is! RunWebAppTask) {
+        throw Exception('Task is not RunWebAppTask, it is ${task.runtimeType}');
+      }
 
-    print('✓ Extracted ${documentIds.length} unique .documentId(s)');
-    return documentIds.toList();
+      final webAppTask = task as RunWebAppTask;
+      if (webAppTask.cubeQueryTaskId.isEmpty) {
+        throw Exception('No cubeQueryTaskId in RunWebAppTask');
+      }
+
+      print('📋 Fetching cube query task: ${webAppTask.cubeQueryTaskId}');
+      // Get the cube query task
+      final cubeTask = await taskService.get(webAppTask.cubeQueryTaskId);
+      print('✓ Got cube task type: ${cubeTask.runtimeType}');
+
+      if (cubeTask is! CubeQueryTask) {
+        throw Exception('CubeQueryTask not found, got ${cubeTask.runtimeType}');
+      }
+
+      print('📋 Extracting .documentId from task JSON...');
+      // Use Direct JSON extraction to get .documentId
+      final taskJson = cubeTask.toJson();
+      final queryJson = taskJson['query'] as Map?;
+
+      if (queryJson == null) {
+        throw Exception('Task has no query in JSON');
+      }
+
+      if (queryJson['relation'] == null) {
+        throw Exception('Task query has no relation');
+      }
+
+      final documentIds = <String>{};
+      var currentRelation = queryJson['relation'] as Map?;
+      var relationDepth = 0;
+
+      // Navigate through relation structure to find InMemoryTable
+      while (currentRelation != null) {
+        relationDepth++;
+        print('📋 Checking relation depth $relationDepth, kind: ${currentRelation['kind']}');
+
+        if (currentRelation['kind'] == 'InMemoryRelation' &&
+            currentRelation['inMemoryTable'] != null) {
+
+          final inMemoryTable = currentRelation['inMemoryTable'] as Map;
+          final columns = inMemoryTable['columns'] as List?;
+
+          if (columns != null) {
+            print('📋 Found InMemoryTable with ${columns.length} columns');
+
+            for (final col in columns) {
+              final colMap = col as Map;
+              final name = colMap['name'] as String?;
+
+              if (name == '.documentId') {
+                final values = colMap['values'] as List?;
+                print('✓ Found .documentId column with ${values?.length ?? 0} values');
+
+                if (values != null) {
+                  for (final value in values) {
+                    final docId = value?.toString();
+                    if (docId != null && docId.isNotEmpty) {
+                      documentIds.add(docId);
+                    }
+                  }
+                }
+                break;
+              }
+            }
+          }
+          break;
+        }
+
+        // Navigate deeper into relation tree
+        currentRelation = currentRelation['relation'] as Map?;
+      }
+
+      if (documentIds.isEmpty) {
+        throw Exception('No .documentId found in task JSON after checking $relationDepth relation levels');
+      }
+
+      print('✓ Extracted ${documentIds.length} unique .documentId(s): ${documentIds.join(", ")}');
+      return documentIds.toList();
+    } catch (e, stackTrace) {
+      print('❌ ERROR in _getDocumentIds: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
   }
 
   Future<List<ImageMetadata>> _downloadAndExtractImages(String documentId) async {
