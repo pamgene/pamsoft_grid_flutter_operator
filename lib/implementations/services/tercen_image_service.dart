@@ -216,12 +216,21 @@ class TercenImageService implements ImageService {
       print('📋 Found .documentId in task JSON: $jsonDocumentId');
 
       // Check if the column values match the JSON .documentId
-      if (values.contains(jsonDocumentId)) {
-        print('✓ Column documentId matches JSON .documentId');
+      // Normalize both for comparison (remove dashes) to handle format differences
+      final normalizedJsonId = _normalizeId(jsonDocumentId);
+      final normalizedColumnIds = values.map(_normalizeId).toSet();
+
+      if (normalizedColumnIds.contains(normalizedJsonId)) {
+        print('✓ Column documentId matches JSON .documentId (possibly different format)');
+        print('   Column: ${values.join(", ")}');
+        print('   JSON:   $jsonDocumentId');
+        // Use the column value as-is since it's the same ID
       } else {
         print('⚠️ WARNING: Column documentId differs from JSON .documentId');
         print('   Column value(s): ${values.join(", ")}');
+        print('   Column normalized: ${normalizedColumnIds.join(", ")}');
         print('   JSON .documentId: $jsonDocumentId');
+        print('   JSON normalized:  $normalizedJsonId');
         print('   Using JSON .documentId as authoritative source');
         return [jsonDocumentId];
       }
@@ -230,6 +239,15 @@ class TercenImageService implements ImageService {
     }
 
     return values.toList();
+  }
+
+  /// Normalizes a document ID by removing dashes and converting to lowercase.
+  ///
+  /// This allows comparison of IDs that might be formatted differently:
+  /// - e3e6f6bf-fd20-4f40-b756-c4b490f1c90e (UUID with dashes)
+  /// - e3e6f6bffd204f40b756c4b490f1c90e (hex without dashes)
+  String _normalizeId(String id) {
+    return id.replaceAll('-', '').toLowerCase();
   }
 
   /// Extracts .documentId from the task JSON structure.
