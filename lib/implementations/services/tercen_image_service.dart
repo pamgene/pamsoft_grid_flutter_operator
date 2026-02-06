@@ -114,11 +114,13 @@ class TercenImageService implements ImageService {
     throw Exception('Failed to resolve document ID using all 3 strategies');
   }
 
-  /// Extracts documentId values from column metadata (Shiny approach).
+  /// Extracts documentId values by reading actual input data from the cube query.
   ///
-  /// Finds columns containing "documentId" and extracts their unique values.
+  /// Uses tableSchemaService to read the actual data table and extract
+  /// values from columns containing "documentId".
   Future<List<String>> _extractDocumentIdsFromColumns() async {
     final taskService = _factory.taskService;
+    final tableSchemaService = _factory.tableSchemaService;
 
     if (_urlParser.taskId == null) {
       throw Exception('No taskId available');
@@ -127,11 +129,13 @@ class TercenImageService implements ImageService {
     print('📋 Fetching task: ${_urlParser.taskId}');
     final task = await taskService.get(_urlParser.taskId!);
 
-    // Navigate to CubeQueryTask
-    CubeQueryTask cubeTask;
+    // Get the CubeQueryTask
+    CubeQueryTask? cubeTask;
     if (task is CubeQueryTask) {
       cubeTask = task;
+      print('📋 Task is CubeQueryTask');
     } else if (task is RunWebAppTask) {
+      print('📋 Task is RunWebAppTask, fetching wrapped CubeQueryTask');
       final webAppTask = task as RunWebAppTask;
       if (webAppTask.cubeQueryTaskId.isEmpty) {
         throw Exception('No cubeQueryTaskId in RunWebAppTask');
@@ -145,76 +149,66 @@ class TercenImageService implements ImageService {
       throw Exception('Task is neither RunWebAppTask nor CubeQueryTask');
     }
 
-    // Extract from JSON
-    final taskJson = cubeTask.toJson();
-    final queryJson = taskJson['query'] as Map?;
+    print('📋 Getting schema for cube query...');
 
-    if (queryJson == null || queryJson['relation'] == null) {
-      throw Exception('Task has no query relation');
+    // Get the table schema by query hash (task ID)
+    final schemas = await tableSchemaService.findByQueryHash([cubeTask.id]);
+    if (schemas.isEmpty) {
+      throw Exception('No schema found for cube query task');
     }
 
-    var currentRelation = queryJson['relation'] as Map?;
-    int relationDepth = 0;
-    final List<String> relationTypesFound = [];
+    final schema = schemas.first;
+    print('📋 Schema found with ${schema.columns.length} columns');
 
-    // Navigate through relation hierarchy
-    while (currentRelation != null) {
-      relationDepth++;
-      final kind = currentRelation['kind'] as String?;
-      relationTypesFound.add(kind ?? 'null');
-      print('📋 Checking relation at depth $relationDepth: kind=$kind');
+    // Print all column names
+    final columnNames = schema.columns.map((col) => col.name).toList();
+    print('📋 Column names: ${columnNames.join(", ")}');
 
-      // Check InMemoryRelation
-      if (kind == 'InMemoryRelation' &&
-          currentRelation['inMemoryTable'] != null) {
-        final inMemoryTable = currentRelation['inMemoryTable'] as Map;
-        final columns = inMemoryTable['columns'] as List?;
+    // Find columns containing "documentId" (case-insensitive, not internal)
+    final docIdColumns = schema.columns.where((col) {
+      return col.name.toLowerCase().contains('documentid') &&
+             !col.name.startsWith('.');
+    }).toList();
 
-        if (columns != null) {
-          print('📋 Found ${columns.length} columns in InMemoryTable');
+    if (docIdColumns.isEmpty) {
+      throw Exception('No documentId column found in ${columnNames.length} columns');
+    }
 
-          // Print all column names for debugging
-          final columnNames = columns
-              .map((col) => (col as Map)['name'] as String?)
-              .where((name) => name != null)
-              .toList();
-          print('📋 Column names: ${columnNames.join(", ")}');
+    final docIdColumnName = docIdColumns.first.name;
+    print('📋 Found documentId column: $docIdColumnName');
+    print('📋 Reading data from table...');
 
-          // Find columns containing "documentId" (case-insensitive)
-          for (final col in columns) {
-            final colMap = col as Map;
-            final name = colMap['name'] as String?;
+    // Select just the documentId column using the schema's ID
+    final table = await tableSchemaService.select(
+      schema.id,
+      [docIdColumnName],
+      0, // offset
+      -1, // limit (all rows)
+    );
 
-            if (name != null &&
-                name.toLowerCase().contains('documentid') &&
-                !name.startsWith('.')) {
-              print('📋 Checking column: $name');
-              final values = colMap['values'] as List?;
-              if (values != null && values.isNotEmpty) {
-                // Get unique non-null values
-                final docIds = values
-                    .where((v) => v != null && v.toString().isNotEmpty)
-                    .map((v) => v.toString())
-                    .toSet()
-                    .toList();
+    print('📋 Retrieved ${table.nRows} rows');
 
-                if (docIds.isNotEmpty) {
-                  print('✓ Found documentId column: $name with ${docIds.length} unique value(s)');
-                  print('✓ Values: ${docIds.join(", ")}');
-                  return docIds;
-                }
-              }
-            }
+    // Extract unique values from the documentId column
+    // Table.columns is a list where each column has a .values property
+    final values = <String>{};
+    if (table.columns.isNotEmpty) {
+      final column = table.columns.first;
+      if (column.values is List) {
+        for (final value in (column.values as List)) {
+          final valueStr = value?.toString();
+          if (valueStr != null && valueStr.isNotEmpty) {
+            values.add(valueStr);
           }
         }
       }
-
-      // Navigate deeper into the relation hierarchy
-      currentRelation = currentRelation['relation'] as Map?;
     }
 
-    print('📋 Relation types found: ${relationTypesFound.join(" → ")}');
-    throw Exception('No documentId column found after checking $relationDepth relations (types: ${relationTypesFound.join(", ")})');
+    if (values.isEmpty) {
+      throw Exception('No values found in documentId column');
+    }
+
+    print('✓ Found ${values.length} unique documentId value(s): ${values.join(", ")}');
+    return values.toList();
   }
 
   Future<List<ImageMetadata>> _downloadAndExtractImages(String documentId) async {
