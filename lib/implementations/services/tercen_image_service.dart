@@ -119,64 +119,78 @@ class TercenImageService implements ImageService {
   /// Uses tableSchemaService to read the actual data table and extract
   /// values from columns containing "documentId".
   Future<List<String>> _extractDocumentIdsFromColumns() async {
+    print('📋 [Strategy 1] Starting _extractDocumentIdsFromColumns');
     final taskService = _factory.taskService;
     final tableSchemaService = _factory.tableSchemaService;
 
     if (_urlParser.taskId == null) {
+      print('❌ [Strategy 1] No taskId available');
       throw Exception('No taskId available');
     }
 
-    print('📋 Fetching task: ${_urlParser.taskId}');
+    print('📋 [Strategy 1] Fetching task: ${_urlParser.taskId}');
     final task = await taskService.get(_urlParser.taskId!);
+    print('📋 [Strategy 1] Task retrieved, type: ${task.runtimeType}');
 
     // Get the CubeQueryTask
     CubeQueryTask? cubeTask;
     if (task is CubeQueryTask) {
       cubeTask = task;
-      print('📋 Task is CubeQueryTask');
+      print('📋 [Strategy 1] Task is CubeQueryTask');
     } else if (task is RunWebAppTask) {
-      print('📋 Task is RunWebAppTask, fetching wrapped CubeQueryTask');
+      print('📋 [Strategy 1] Task is RunWebAppTask, fetching wrapped CubeQueryTask');
       final webAppTask = task as RunWebAppTask;
       if (webAppTask.cubeQueryTaskId.isEmpty) {
+        print('❌ [Strategy 1] No cubeQueryTaskId in RunWebAppTask');
         throw Exception('No cubeQueryTaskId in RunWebAppTask');
       }
       final wrappedTask = await taskService.get(webAppTask.cubeQueryTaskId);
       if (wrappedTask is! CubeQueryTask) {
+        print('❌ [Strategy 1] Wrapped task is not CubeQueryTask: ${wrappedTask.runtimeType}');
         throw Exception('Wrapped task is not CubeQueryTask');
       }
       cubeTask = wrappedTask;
+      print('📋 [Strategy 1] Got wrapped CubeQueryTask');
     } else {
+      print('❌ [Strategy 1] Task is neither RunWebAppTask nor CubeQueryTask: ${task.runtimeType}');
       throw Exception('Task is neither RunWebAppTask nor CubeQueryTask');
     }
 
-    print('📋 Getting schema for cube query...');
+    print('📋 [Strategy 1] Getting schema for cube query...');
+    print('📋 [Strategy 1] Using cubeTask.id: ${cubeTask.id}');
 
     // Get the table schema by query hash (task ID)
     final schemas = await tableSchemaService.findByQueryHash([cubeTask.id]);
+    print('📋 [Strategy 1] findByQueryHash returned ${schemas.length} schema(s)');
+
     if (schemas.isEmpty) {
+      print('❌ [Strategy 1] No schema found for cube query task');
       throw Exception('No schema found for cube query task');
     }
 
     final schema = schemas.first;
-    print('📋 Schema found with ${schema.columns.length} columns');
+    print('📋 [Strategy 1] Schema ID: ${schema.id}');
+    print('📋 [Strategy 1] Schema has ${schema.columns.length} columns');
 
     // Print all column names
     final columnNames = schema.columns.map((col) => col.name).toList();
-    print('📋 Column names: ${columnNames.join(", ")}');
+    print('📋 [Strategy 1] Column names: ${columnNames.join(", ")}');
 
     // Find columns containing "documentId" (case-insensitive)
     // Include .documentId (dot prefix) as it's the actual property name
     final docIdColumns = schema.columns.where((col) {
       return col.name.toLowerCase().contains('documentid');
     }).toList();
+    print('📋 [Strategy 1] Found ${docIdColumns.length} columns matching "documentid"');
 
     if (docIdColumns.isEmpty) {
+      print('❌ [Strategy 1] No documentId column found in ${columnNames.length} columns');
       throw Exception('No documentId column found in ${columnNames.length} columns');
     }
 
     final docIdColumnName = docIdColumns.first.name;
-    print('📋 Found documentId column: $docIdColumnName');
-    print('📋 Reading data from table...');
+    print('📋 [Strategy 1] Using documentId column: "$docIdColumnName"');
+    print('📋 [Strategy 1] Calling tableSchemaService.select...');
 
     // Select just the documentId column using the schema's ID
     final table = await tableSchemaService.select(
@@ -186,24 +200,33 @@ class TercenImageService implements ImageService {
       -1, // limit (all rows)
     );
 
-    print('📋 Retrieved ${table.nRows} rows');
+    print('📋 [Strategy 1] Retrieved table with ${table.nRows} rows and ${table.columns.length} columns');
 
     // Extract unique values from the documentId column
     // Table.columns is a list where each column has a .values property
     final values = <String>{};
     if (table.columns.isNotEmpty) {
       final column = table.columns.first;
+      print('📋 [Strategy 1] Column type: ${column.values.runtimeType}');
       if (column.values is List) {
-        for (final value in (column.values as List)) {
+        final valuesList = column.values as List;
+        print('📋 [Strategy 1] Processing ${valuesList.length} values from column');
+        for (final value in valuesList) {
           final valueStr = value?.toString();
           if (valueStr != null && valueStr.isNotEmpty) {
             values.add(valueStr);
+            print('📋 [Strategy 1]   - Found value: $valueStr');
           }
         }
       }
+    } else {
+      print('⚠️ [Strategy 1] Table has no columns!');
     }
 
+    print('📋 [Strategy 1] Extracted ${values.length} unique value(s)');
+
     if (values.isEmpty) {
+      print('❌ [Strategy 1] No values found in documentId column');
       throw Exception('No values found in documentId column');
     }
 
