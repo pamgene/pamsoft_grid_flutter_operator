@@ -66,10 +66,21 @@ class TercenImageService implements ImageService {
   }
 
   Future<List<String>> _getDocumentIds() async {
+    // Strategy 1: Try extracting from column metadata (Shiny approach)
     try {
-      print('📋 Resolving document IDs using hierarchical strategy...');
+      print('📋 Strategy 1: Extracting documentId from column metadata...');
+      final docIds = await _extractDocumentIdsFromColumns();
+      if (docIds.isNotEmpty) {
+        print('✓ Found ${docIds.length} documentId(s) from column metadata');
+        return docIds;
+      }
+    } catch (e) {
+      print('⚠️ Strategy 1 failed: $e');
+    }
 
-      // Use DocumentIdResolver with fallback strategies
+    // Strategy 2: Use DocumentIdResolver with fallback strategies
+    try {
+      print('📋 Strategy 2: Using DocumentIdResolver with fallback...');
       final resolver = DocumentIdResolver(_urlParser);
       final resolvedIds = await resolver.resolveDocumentId();
 
@@ -78,14 +89,93 @@ class TercenImageService implements ImageService {
       }
 
       print('✓ Resolved document ID: ${resolvedIds.documentId}');
-
-      // Return as single-item list (we only have one documentId)
       return [resolvedIds.documentId!];
     } catch (e, stackTrace) {
       print('❌ ERROR in _getDocumentIds: $e');
       print('Stack trace: $stackTrace');
       rethrow;
     }
+  }
+
+  /// Extracts documentId values from column metadata (Shiny approach).
+  ///
+  /// Finds columns containing "documentId" and extracts their unique values.
+  Future<List<String>> _extractDocumentIdsFromColumns() async {
+    final taskService = _factory.taskService;
+
+    if (_urlParser.taskId == null) {
+      throw Exception('No taskId available');
+    }
+
+    print('📋 Fetching task: ${_urlParser.taskId}');
+    final task = await taskService.get(_urlParser.taskId!);
+
+    // Navigate to CubeQueryTask
+    CubeQueryTask cubeTask;
+    if (task is CubeQueryTask) {
+      cubeTask = task;
+    } else if (task is RunWebAppTask) {
+      final webAppTask = task as RunWebAppTask;
+      if (webAppTask.cubeQueryTaskId.isEmpty) {
+        throw Exception('No cubeQueryTaskId in RunWebAppTask');
+      }
+      final wrappedTask = await taskService.get(webAppTask.cubeQueryTaskId);
+      if (wrappedTask is! CubeQueryTask) {
+        throw Exception('Wrapped task is not CubeQueryTask');
+      }
+      cubeTask = wrappedTask;
+    } else {
+      throw Exception('Task is neither RunWebAppTask nor CubeQueryTask');
+    }
+
+    // Extract from JSON
+    final taskJson = cubeTask.toJson();
+    final queryJson = taskJson['query'] as Map?;
+
+    if (queryJson == null || queryJson['relation'] == null) {
+      throw Exception('Task has no query relation');
+    }
+
+    var currentRelation = queryJson['relation'] as Map?;
+
+    // Navigate to InMemoryTable
+    while (currentRelation != null) {
+      if (currentRelation['kind'] == 'InMemoryRelation' &&
+          currentRelation['inMemoryTable'] != null) {
+        final inMemoryTable = currentRelation['inMemoryTable'] as Map;
+        final columns = inMemoryTable['columns'] as List?;
+
+        if (columns != null) {
+          // Find columns containing "documentId"
+          for (final col in columns) {
+            final colMap = col as Map;
+            final name = colMap['name'] as String?;
+
+            if (name != null && name.contains('documentId') && !name.startsWith('.')) {
+              final values = colMap['values'] as List?;
+              if (values != null && values.isNotEmpty) {
+                // Get unique non-null values
+                final docIds = values
+                    .where((v) => v != null && v.toString().isNotEmpty)
+                    .map((v) => v.toString())
+                    .toSet()
+                    .toList();
+
+                if (docIds.isNotEmpty) {
+                  print('📋 Found documentId column: $name with ${docIds.length} unique value(s)');
+                  return docIds;
+                }
+              }
+            }
+          }
+        }
+        break;
+      }
+
+      currentRelation = currentRelation['relation'] as Map?;
+    }
+
+    throw Exception('No documentId column found in task data');
   }
 
   Future<List<ImageMetadata>> _downloadAndExtractImages(String documentId) async {
