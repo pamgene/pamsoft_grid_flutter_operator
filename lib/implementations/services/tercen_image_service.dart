@@ -85,16 +85,33 @@ class TercenImageService implements ImageService {
       final resolvedIds = await resolver.resolveDocumentId();
 
       if (resolvedIds == null || resolvedIds.documentId == null) {
-        throw Exception('Failed to resolve document ID using all strategies');
+        throw Exception('DocumentIdResolver failed');
       }
 
       print('✓ Resolved document ID: ${resolvedIds.documentId}');
       return [resolvedIds.documentId!];
-    } catch (e, stackTrace) {
-      print('❌ ERROR in _getDocumentIds: $e');
-      print('Stack trace: $stackTrace');
-      rethrow;
+    } catch (e) {
+      print('⚠️ Strategy 2 failed: $e');
     }
+
+    // Strategy 3: Try using standalone documentId from URL
+    if (_urlParser.documentId != null && _urlParser.documentId!.isNotEmpty) {
+      try {
+        print('📋 Strategy 3: Trying standalone documentId from URL...');
+        print('   Using documentId: ${_urlParser.documentId}');
+
+        // Verify the file exists by attempting to get its metadata
+        final fileService = _factory.fileService;
+        await fileService.get(_urlParser.documentId!);
+
+        print('✓ Verified documentId from URL exists: ${_urlParser.documentId}');
+        return [_urlParser.documentId!];
+      } catch (e) {
+        print('⚠️ Strategy 3 failed: $e');
+      }
+    }
+
+    throw Exception('Failed to resolve document ID using all 3 strategies');
   }
 
   /// Extracts documentId values from column metadata (Shiny approach).
