@@ -114,14 +114,13 @@ class TercenImageService implements ImageService {
     throw Exception('Failed to resolve document ID using all 3 strategies');
   }
 
-  /// Extracts documentId values by reading actual input data from the cube query.
+  /// Extracts documentId values by parsing the task JSON directly.
   ///
-  /// Uses tableSchemaService to read the actual data table and extract
-  /// values from columns containing "documentId".
+  /// Navigates the query.relation structure to find InMemoryTable columns
+  /// and extracts values from the .documentId column (same approach as DocumentIdResolver).
   Future<List<String>> _extractDocumentIdsFromColumns() async {
-    print('📋 [Strategy 1] Starting _extractDocumentIdsFromColumns');
+    print('📋 [Strategy 1] Starting _extractDocumentIdsFromColumns (JSON parsing approach)');
     final taskService = _factory.taskService;
-    final tableSchemaService = _factory.tableSchemaService;
 
     if (_urlParser.taskId == null) {
       print('❌ [Strategy 1] No taskId available');
@@ -156,109 +155,67 @@ class TercenImageService implements ImageService {
       throw Exception('Task is neither RunWebAppTask nor CubeQueryTask');
     }
 
-    print('📋 [Strategy 1] Getting schema for cube query...');
-    print('📋 [Strategy 1] Using cubeTask.id: ${cubeTask.id}');
+    // Parse JSON directly (same approach as DocumentIdResolver)
+    print('📋 [Strategy 1] Parsing task JSON directly...');
+    final taskJson = cubeTask.toJson();
+    final queryJson = taskJson['query'] as Map?;
 
-    // Get the table schema by query hash (task ID)
-    final schemas = await tableSchemaService.findByQueryHash([cubeTask.id]);
-    print('📋 [Strategy 1] findByQueryHash returned ${schemas.length} schema(s)');
+    print('📋 [Strategy 1] Has query: ${queryJson != null}');
+    print('📋 [Strategy 1] Has relation: ${queryJson?['relation'] != null}');
 
-    if (schemas.isEmpty) {
-      print('❌ [Strategy 1] No schema found for cube query task');
-      throw Exception('No schema found for cube query task');
+    if (queryJson == null || queryJson['relation'] == null) {
+      print('❌ [Strategy 1] No query.relation in task JSON');
+      throw Exception('No query.relation in task JSON');
     }
 
-    final schema = schemas.first;
-    print('📋 [Strategy 1] Schema ID: ${schema.id}');
-    print('📋 [Strategy 1] Schema has ${schema.columns.length} columns');
-
-    // Print all column names
-    final columnNames = schema.columns.map((col) => col.name).toList();
-    print('📋 [Strategy 1] Column names: ${columnNames.join(", ")}');
-
-    // Find columns containing "documentId" (case-insensitive)
-    // Include .documentId (dot prefix) as it's the actual property name
-    final docIdColumns = schema.columns.where((col) {
-      return col.name.toLowerCase().contains('documentid');
-    }).toList();
-    print('📋 [Strategy 1] Found ${docIdColumns.length} columns matching "documentid"');
-
-    if (docIdColumns.isEmpty) {
-      print('❌ [Strategy 1] No documentId column found in ${columnNames.length} columns');
-      throw Exception('No documentId column found in ${columnNames.length} columns');
-    }
-
-    final docIdColumnName = docIdColumns.first.name;
-    print('📋 [Strategy 1] Using documentId column: "$docIdColumnName"');
-    print('📋 [Strategy 1] Calling tableSchemaService.select...');
-
-    // Select just the documentId column using the schema's ID
-    final table = await tableSchemaService.select(
-      schema.id,
-      [docIdColumnName],
-      0, // offset
-      -1, // limit (all rows)
-    );
-
-    print('📋 [Strategy 1] Retrieved table with ${table.nRows} rows and ${table.columns.length} columns');
-
-    // Extract unique values from the documentId column
-    // Table.columns is a list where each column has a .values property
+    var currentRelation = queryJson['relation'] as Map?;
+    int depth = 0;
     final values = <String>{};
-    if (table.columns.isNotEmpty) {
-      final column = table.columns.first;
-      print('📋 [Strategy 1] Column type: ${column.values.runtimeType}');
-      if (column.values is List) {
-        final valuesList = column.values as List;
-        print('📋 [Strategy 1] Processing ${valuesList.length} values from column');
-        for (final value in valuesList) {
-          final valueStr = value?.toString();
-          if (valueStr != null && valueStr.isNotEmpty) {
-            values.add(valueStr);
-            print('📋 [Strategy 1]   - Found value: $valueStr');
+
+    while (currentRelation != null && depth < 10) {
+      final kind = currentRelation['kind'] as String?;
+      print('📋 [Strategy 1] Relation[$depth] kind: $kind');
+
+      if (kind == 'InMemoryRelation' && currentRelation['inMemoryTable'] != null) {
+        final inMemoryTable = currentRelation['inMemoryTable'] as Map;
+        final columns = inMemoryTable['columns'] as List?;
+
+        print('📋 [Strategy 1] Found InMemoryTable with ${columns?.length ?? 0} columns');
+
+        if (columns != null) {
+          final columnNames = columns.map((col) => (col as Map)['name']).toList();
+          print('📋 [Strategy 1] Column names in InMemoryTable: ${columnNames.join(", ")}');
+
+          // Extract .documentId values
+          for (final col in columns) {
+            final colMap = col as Map;
+            final name = colMap['name'] as String?;
+            final colValues = colMap['values'] as List?;
+
+            if (name == '.documentId' && colValues != null && colValues.isNotEmpty) {
+              for (final val in colValues) {
+                final valStr = val?.toString();
+                if (valStr != null && valStr.isNotEmpty) {
+                  values.add(valStr);
+                }
+              }
+              print('✓ [Strategy 1] Found .documentId column with ${values.length} value(s): ${values.join(", ")}');
+            }
+          }
+
+          if (values.isNotEmpty) {
+            break; // Found what we need
           }
         }
       }
-    } else {
-      print('⚠️ [Strategy 1] Table has no columns!');
-    }
 
-    print('📋 [Strategy 1] Extracted ${values.length} unique value(s)');
+      currentRelation = currentRelation['relation'] as Map?;
+      depth++;
+    }
 
     if (values.isEmpty) {
-      print('❌ [Strategy 1] No values found in documentId column');
-      throw Exception('No values found in documentId column');
-    }
-
-    print('✓ Found ${values.length} unique documentId value(s) from column: ${values.join(", ")}');
-
-    // IMPORTANT: Also check for .documentId in the task JSON to verify we have the right file
-    // The column might contain an alias or reference, not the actual file ID
-    final jsonDocumentId = _extractDocumentIdFromTaskJson(cubeTask);
-    if (jsonDocumentId != null) {
-      print('📋 Found .documentId in task JSON: $jsonDocumentId');
-
-      // Check if the column values match the JSON .documentId
-      // Normalize both for comparison (remove dashes) to handle format differences
-      final normalizedJsonId = _normalizeId(jsonDocumentId);
-      final normalizedColumnIds = values.map(_normalizeId).toSet();
-
-      if (normalizedColumnIds.contains(normalizedJsonId)) {
-        print('✓ Column documentId matches JSON .documentId (possibly different format)');
-        print('   Column: ${values.join(", ")}');
-        print('   JSON:   $jsonDocumentId');
-        // Use the column value as-is since it's the same ID
-      } else {
-        print('⚠️ WARNING: Column documentId differs from JSON .documentId');
-        print('   Column value(s): ${values.join(", ")}');
-        print('   Column normalized: ${normalizedColumnIds.join(", ")}');
-        print('   JSON .documentId: $jsonDocumentId');
-        print('   JSON normalized:  $normalizedJsonId');
-        print('   Using JSON .documentId as authoritative source');
-        return [jsonDocumentId];
-      }
-    } else {
-      print('📋 No .documentId found in task JSON, using column values');
+      print('❌ [Strategy 1] No .documentId found in InMemoryTable');
+      throw Exception('No .documentId found in InMemoryTable');
     }
 
     return values.toList();
