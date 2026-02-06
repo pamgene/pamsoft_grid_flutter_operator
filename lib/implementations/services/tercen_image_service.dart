@@ -164,10 +164,10 @@ class TercenImageService implements ImageService {
     final columnNames = schema.columns.map((col) => col.name).toList();
     print('📋 Column names: ${columnNames.join(", ")}');
 
-    // Find columns containing "documentId" (case-insensitive, not internal)
+    // Find columns containing "documentId" (case-insensitive)
+    // Include .documentId (dot prefix) as it's the actual property name
     final docIdColumns = schema.columns.where((col) {
-      return col.name.toLowerCase().contains('documentid') &&
-             !col.name.startsWith('.');
+      return col.name.toLowerCase().contains('documentid');
     }).toList();
 
     if (docIdColumns.isEmpty) {
