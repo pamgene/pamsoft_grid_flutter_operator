@@ -78,22 +78,32 @@ class TercenImageService implements ImageService {
       final task = await taskService.get(_urlParser.taskId!);
       print('✓ Got task type: ${task.runtimeType}');
 
-      if (task is! RunWebAppTask) {
-        throw Exception('Task is not RunWebAppTask, it is ${task.runtimeType}');
-      }
+      // Handle both RunWebAppTask and direct CubeQueryTask
+      CubeQueryTask cubeTask;
 
-      final webAppTask = task as RunWebAppTask;
-      if (webAppTask.cubeQueryTaskId.isEmpty) {
-        throw Exception('No cubeQueryTaskId in RunWebAppTask');
-      }
+      if (task is CubeQueryTask) {
+        // Direct CubeQueryTask (common in Data Steps)
+        print('✓ Task is directly a CubeQueryTask');
+        cubeTask = task as CubeQueryTask;
+      } else if (task is RunWebAppTask) {
+        // RunWebAppTask wrapping a CubeQueryTask
+        print('✓ Task is RunWebAppTask, fetching wrapped CubeQueryTask');
+        final webAppTask = task as RunWebAppTask;
+        if (webAppTask.cubeQueryTaskId.isEmpty) {
+          throw Exception('No cubeQueryTaskId in RunWebAppTask');
+        }
 
-      print('📋 Fetching cube query task: ${webAppTask.cubeQueryTaskId}');
-      // Get the cube query task
-      final cubeTask = await taskService.get(webAppTask.cubeQueryTaskId);
-      print('✓ Got cube task type: ${cubeTask.runtimeType}');
+        print('📋 Fetching cube query task: ${webAppTask.cubeQueryTaskId}');
+        final wrappedTask = await taskService.get(webAppTask.cubeQueryTaskId);
+        print('✓ Got cube task type: ${wrappedTask.runtimeType}');
 
-      if (cubeTask is! CubeQueryTask) {
-        throw Exception('CubeQueryTask not found, got ${cubeTask.runtimeType}');
+        if (wrappedTask is! CubeQueryTask) {
+          throw Exception('Wrapped task is not CubeQueryTask, got ${wrappedTask.runtimeType}');
+        }
+
+        cubeTask = wrappedTask as CubeQueryTask;
+      } else {
+        throw Exception('Task is neither RunWebAppTask nor CubeQueryTask, it is ${task.runtimeType}');
       }
 
       print('📋 Extracting .documentId from task JSON...');

@@ -53,22 +53,36 @@ class TercenGridService implements GridService {
       throw Exception('No taskId found in URL');
     }
 
+    print('📋 Fetching task: ${_urlParser.taskId}');
     final task = await taskService.get(_urlParser.taskId!);
+    print('✓ Got task type: ${task.runtimeType}');
 
-    // Cast to RunWebAppTask to get cubeQueryTaskId
-    if (task is! RunWebAppTask) {
-      throw Exception('Task is not RunWebAppTask: ${task.runtimeType}');
-    }
+    // Handle both RunWebAppTask and direct CubeQueryTask
+    CubeQueryTask cubeTask;
 
-    final webAppTask = task as RunWebAppTask;
-    if (webAppTask.cubeQueryTaskId.isEmpty) {
-      throw Exception('No cubeQueryTaskId in RunWebAppTask');
-    }
+    if (task is CubeQueryTask) {
+      // Direct CubeQueryTask (common in Data Steps)
+      print('✓ Task is directly a CubeQueryTask');
+      cubeTask = task as CubeQueryTask;
+    } else if (task is RunWebAppTask) {
+      // RunWebAppTask wrapping a CubeQueryTask
+      print('✓ Task is RunWebAppTask, fetching wrapped CubeQueryTask');
+      final webAppTask = task as RunWebAppTask;
+      if (webAppTask.cubeQueryTaskId.isEmpty) {
+        throw Exception('No cubeQueryTaskId in RunWebAppTask');
+      }
 
-    // Get the cube query task
-    final cubeTask = await taskService.get(webAppTask.cubeQueryTaskId);
-    if (cubeTask is! CubeQueryTask) {
-      throw Exception('CubeQueryTask not found');
+      print('📋 Fetching cube query task: ${webAppTask.cubeQueryTaskId}');
+      final wrappedTask = await taskService.get(webAppTask.cubeQueryTaskId);
+      print('✓ Got cube task type: ${wrappedTask.runtimeType}');
+
+      if (wrappedTask is! CubeQueryTask) {
+        throw Exception('Wrapped task is not CubeQueryTask, got ${wrappedTask.runtimeType}');
+      }
+
+      cubeTask = wrappedTask as CubeQueryTask;
+    } else {
+      throw Exception('Task is neither RunWebAppTask nor CubeQueryTask, it is ${task.runtimeType}');
     }
 
     // Use Direct JSON extraction to get all data including column/row metadata
