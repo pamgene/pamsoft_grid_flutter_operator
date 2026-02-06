@@ -154,21 +154,39 @@ class TercenImageService implements ImageService {
     }
 
     var currentRelation = queryJson['relation'] as Map?;
+    int relationDepth = 0;
 
-    // Navigate to InMemoryTable
+    // Navigate through relation hierarchy
     while (currentRelation != null) {
-      if (currentRelation['kind'] == 'InMemoryRelation' &&
+      relationDepth++;
+      final kind = currentRelation['kind'] as String?;
+      print('📋 Checking relation at depth $relationDepth: kind=$kind');
+
+      // Check InMemoryRelation
+      if (kind == 'InMemoryRelation' &&
           currentRelation['inMemoryTable'] != null) {
         final inMemoryTable = currentRelation['inMemoryTable'] as Map;
         final columns = inMemoryTable['columns'] as List?;
 
         if (columns != null) {
-          // Find columns containing "documentId"
+          print('📋 Found ${columns.length} columns in InMemoryTable');
+
+          // Print all column names for debugging
+          final columnNames = columns
+              .map((col) => (col as Map)['name'] as String?)
+              .where((name) => name != null)
+              .toList();
+          print('📋 Column names: ${columnNames.join(", ")}');
+
+          // Find columns containing "documentId" (case-insensitive)
           for (final col in columns) {
             final colMap = col as Map;
             final name = colMap['name'] as String?;
 
-            if (name != null && name.contains('documentId') && !name.startsWith('.')) {
+            if (name != null &&
+                name.toLowerCase().contains('documentid') &&
+                !name.startsWith('.')) {
+              print('📋 Checking column: $name');
               final values = colMap['values'] as List?;
               if (values != null && values.isNotEmpty) {
                 // Get unique non-null values
@@ -179,20 +197,21 @@ class TercenImageService implements ImageService {
                     .toList();
 
                 if (docIds.isNotEmpty) {
-                  print('📋 Found documentId column: $name with ${docIds.length} unique value(s)');
+                  print('✓ Found documentId column: $name with ${docIds.length} unique value(s)');
+                  print('✓ Values: ${docIds.join(", ")}');
                   return docIds;
                 }
               }
             }
           }
         }
-        break;
       }
 
+      // Navigate deeper into the relation hierarchy
       currentRelation = currentRelation['relation'] as Map?;
     }
 
-    throw Exception('No documentId column found in task data');
+    throw Exception('No documentId column found after checking $relationDepth relations');
   }
 
   Future<List<ImageMetadata>> _downloadAndExtractImages(String documentId) async {
