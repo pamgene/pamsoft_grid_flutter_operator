@@ -207,8 +207,75 @@ class TercenImageService implements ImageService {
       throw Exception('No values found in documentId column');
     }
 
-    print('✓ Found ${values.length} unique documentId value(s): ${values.join(", ")}');
+    print('✓ Found ${values.length} unique documentId value(s) from column: ${values.join(", ")}');
+
+    // IMPORTANT: Also check for .documentId in the task JSON to verify we have the right file
+    // The column might contain an alias or reference, not the actual file ID
+    final jsonDocumentId = _extractDocumentIdFromTaskJson(cubeTask);
+    if (jsonDocumentId != null) {
+      print('📋 Found .documentId in task JSON: $jsonDocumentId');
+
+      // Check if the column values match the JSON .documentId
+      if (values.contains(jsonDocumentId)) {
+        print('✓ Column documentId matches JSON .documentId');
+      } else {
+        print('⚠️ WARNING: Column documentId differs from JSON .documentId');
+        print('   Column value(s): ${values.join(", ")}');
+        print('   JSON .documentId: $jsonDocumentId');
+        print('   Using JSON .documentId as authoritative source');
+        return [jsonDocumentId];
+      }
+    } else {
+      print('📋 No .documentId found in task JSON, using column values');
+    }
+
     return values.toList();
+  }
+
+  /// Extracts .documentId from the task JSON structure.
+  ///
+  /// Returns the .documentId property if found in the task's relation,
+  /// otherwise returns null.
+  String? _extractDocumentIdFromTaskJson(CubeQueryTask cubeTask) {
+    try {
+      final taskJson = cubeTask.toJson();
+      final queryJson = taskJson['query'] as Map?;
+
+      if (queryJson == null || queryJson['relation'] == null) {
+        return null;
+      }
+
+      var currentRelation = queryJson['relation'] as Map?;
+
+      // Navigate through relation hierarchy looking for .documentId
+      while (currentRelation != null) {
+        // Check for .documentId at this level
+        if (currentRelation.containsKey('.documentId')) {
+          final docId = currentRelation['.documentId'];
+          if (docId != null && docId.toString().isNotEmpty) {
+            return docId.toString();
+          }
+        }
+
+        // Also check in properties if they exist
+        if (currentRelation['properties'] is Map) {
+          final props = currentRelation['properties'] as Map;
+          if (props.containsKey('.documentId')) {
+            final docId = props['.documentId'];
+            if (docId != null && docId.toString().isNotEmpty) {
+              return docId.toString();
+            }
+          }
+        }
+
+        // Navigate deeper
+        currentRelation = currentRelation['relation'] as Map?;
+      }
+    } catch (e) {
+      print('📋 Could not extract .documentId from JSON: $e');
+    }
+
+    return null;
   }
 
   Future<List<ImageMetadata>> _downloadAndExtractImages(String documentId) async {
