@@ -155,11 +155,13 @@ class TercenImageService implements ImageService {
 
     var currentRelation = queryJson['relation'] as Map?;
     int relationDepth = 0;
+    final List<String> relationTypesFound = [];
 
     // Navigate through relation hierarchy
     while (currentRelation != null) {
       relationDepth++;
       final kind = currentRelation['kind'] as String?;
+      relationTypesFound.add(kind ?? 'null');
       print('📋 Checking relation at depth $relationDepth: kind=$kind');
 
       // Check InMemoryRelation
@@ -211,7 +213,8 @@ class TercenImageService implements ImageService {
       currentRelation = currentRelation['relation'] as Map?;
     }
 
-    throw Exception('No documentId column found after checking $relationDepth relations');
+    print('📋 Relation types found: ${relationTypesFound.join(" → ")}');
+    throw Exception('No documentId column found after checking $relationDepth relations (types: ${relationTypesFound.join(", ")})');
   }
 
   Future<List<ImageMetadata>> _downloadAndExtractImages(String documentId) async {
