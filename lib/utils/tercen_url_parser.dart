@@ -70,5 +70,22 @@ class TercenUrlParser {
     } else {
       print('✗ No valid Tercen URL pattern detected');
     }
+
+    // IMPORTANT: Also check query parameters for workflowId/stepId
+    // This enables DocumentIdResolver file search fallback even in standalone mode
+    if (workflowId == null && uri.queryParameters.containsKey('workflowId')) {
+      workflowId = uri.queryParameters['workflowId'];
+      print('✓ Extracted workflowId from query params: $workflowId');
+    }
+    if (stepId == null && uri.queryParameters.containsKey('stepId')) {
+      stepId = uri.queryParameters['stepId'];
+      print('✓ Extracted stepId from query params: $stepId');
+    }
+
+    // Set isWorkflowMode if we have both IDs (even in standalone mode)
+    if (!isWorkflowMode && workflowId != null && stepId != null) {
+      isWorkflowMode = true;
+      print('✓ Workflow mode enabled via query params (workflowId + stepId present)');
+    }
   }
 }
