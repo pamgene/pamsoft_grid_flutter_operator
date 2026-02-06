@@ -25,6 +25,19 @@ dependencies:
   # Image processing for TIFF to PNG conversion
   image: ^4.2.0
 
+  # Web interop for WASM compatibility (replaces dart:html)
+  web: ^0.5.1
+
+  # Tercen API client for reading data
+  sci_tercen_client:
+    git:
+      url: https://github.com/tercen/sci_tercen_client.git
+      ref: 1.7.0
+      path: sci_tercen_client
+
+  # ZIP file extraction
+  archive: ^3.6.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

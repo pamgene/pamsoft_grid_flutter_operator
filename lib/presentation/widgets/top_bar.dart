@@ -1,5 +1,5 @@
-import 'dart:html' as html;
 import 'package:flutter/material.dart';
+import 'package:web/web.dart' as web;
 import 'package:pamsoft_grid_flutter_operator/core/theme/app_spacing.dart';
 
 /// Top bar shown when app is NOT embedded in a Data Step.
@@ -20,7 +20,7 @@ class TopBar extends StatelessWidget {
       onClose!();
     } else {
       // Default: close the browser window/tab
-      html.window.close();
+      web.window.close();
     }
   }
 

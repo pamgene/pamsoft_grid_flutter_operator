@@ -18,12 +18,16 @@ class GridData {
   /// Global Y offset (for whole-grid dragging).
   double globalOffsetY;
 
+  /// Grid rotation in radians (for Tercen output).
+  double rotation;
+
   GridData({
     required this.gridImageId,
     required this.configuration,
     required this.fiducials,
     this.globalOffsetX = 0,
     this.globalOffsetY = 0,
+    this.rotation = 0,
   });
 
   /// Creates a deep copy of the grid data.
@@ -33,6 +37,7 @@ class GridData {
     List<FiducialPosition>? fiducials,
     double? globalOffsetX,
     double? globalOffsetY,
+    double? rotation,
   }) {
     return GridData(
       gridImageId: gridImageId ?? this.gridImageId,
@@ -40,6 +45,7 @@ class GridData {
       fiducials: fiducials ?? this.fiducials.map((f) => f.copyWith()).toList(),
       globalOffsetX: globalOffsetX ?? this.globalOffsetX,
       globalOffsetY: globalOffsetY ?? this.globalOffsetY,
+      rotation: rotation ?? this.rotation,
     );
   }
 
@@ -77,5 +83,38 @@ class GridData {
     }
 
     return fiducials;
+  }
+
+  /// Converts grid data to Tercen output format.
+  ///
+  /// Returns a list of maps, each representing one fiducial with fields:
+  /// - gridX, gridY: Final positions (base + global + individual offsets)
+  /// - grdXFixedPosition, grdYFixedPosition: Same as gridX/gridY
+  /// - diameter: Spot diameter
+  /// - manual: 1 if manually adjusted, 0 otherwise
+  /// - bad: 1 if marked bad, 0 otherwise
+  /// - empty: 1 if marked empty, 0 otherwise
+  /// - grdRotation: Rotation angle in radians
+  /// - row, col: Grid coordinates
+  List<Map<String, dynamic>> toTercenOutput() {
+    return fiducials.map((fiducial) {
+      final finalX = fiducial.baseX + globalOffsetX + fiducial.individualOffsetX;
+      final finalY = fiducial.baseY + globalOffsetY + fiducial.individualOffsetY;
+
+      return {
+        'gridX': finalX,
+        'gridY': finalY,
+        'grdXFixedPosition': finalX,
+        'grdYFixedPosition': finalY,
+        'diameter': fiducial.diameter,
+        'manual': fiducial.isManual ? 1 : 0,
+        'bad': fiducial.isBad ? 1 : 0,
+        'empty': fiducial.isEmpty ? 1 : 0,
+        'grdRotation': rotation,
+        'row': fiducial.row,
+        'col': fiducial.col,
+        'isReference': fiducial.isReference,
+      };
+    }).toList();
   }
 }

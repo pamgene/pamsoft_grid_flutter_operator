@@ -33,6 +33,21 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <!-- Tercen Development Credentials -->
+  <script>
+    // Check if we're in development mode (localhost)
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      // Set the Tercen token for local development
+      const devToken = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczovL3N0YWdlLnRlcmNlbi5jb20iLCJleHAiOjE3NzI5ODI4NzQsImRhdGEiOnsiZCI6IiIsInUiOiJtYXJ0aW4uZW5nbGlzaCIsImUiOjE3NzI5ODI4NzQ2OTh9fQ.96VdmU2xkUYQOLtO8ivE7S_vdqJ5mE8Xj6XW9huW3FU';
+      const serviceUri = 'https://stage.tercen.com';
+
+      localStorage.setItem('tercen.token', devToken);
+      localStorage.setItem('tercen.serviceUri', serviceUri);
+
+      console.log('🔧 DEV MODE: Set Tercen credentials in localStorage');
+    }
+  </script>
+
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

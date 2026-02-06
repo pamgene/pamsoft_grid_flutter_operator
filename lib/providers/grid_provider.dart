@@ -3,6 +3,7 @@ import 'package:pamsoft_grid_flutter_operator/di/service_locator.dart';
 import 'package:pamsoft_grid_flutter_operator/models/grid_data.dart';
 import 'package:pamsoft_grid_flutter_operator/models/enums.dart';
 import 'package:pamsoft_grid_flutter_operator/services/grid_service.dart';
+import 'package:pamsoft_grid_flutter_operator/utils/csv_export.dart';
 import 'dart:math' as math;
 
 /// Provider for managing grid state and interactions.
@@ -51,6 +52,11 @@ class GridProvider extends ChangeNotifier {
     _currentGridData!.globalOffsetX += dx;
     _currentGridData!.globalOffsetY += dy;
 
+    // Mark all fiducials as manually adjusted
+    for (final fiducial in _currentGridData!.fiducials) {
+      fiducial.isManual = true;
+    }
+
     _markAsModified();
     notifyListeners();
   }
@@ -67,6 +73,7 @@ class GridProvider extends ChangeNotifier {
 
     _currentGridData!.fiducials[fiducialIndex].individualOffsetX += dx;
     _currentGridData!.fiducials[fiducialIndex].individualOffsetY += dy;
+    _currentGridData!.fiducials[fiducialIndex].isManual = true;
 
     _markAsModified();
     notifyListeners();
@@ -75,6 +82,9 @@ class GridProvider extends ChangeNotifier {
   /// Rotates the entire grid around a center point.
   void rotateWholeGrid(double radians, double centerX, double centerY) {
     if (_currentGridData == null) return;
+
+    // Accumulate rotation
+    _currentGridData!.rotation += radians;
 
     final cos = math.cos(radians);
     final sin = math.sin(radians);
@@ -100,6 +110,7 @@ class GridProvider extends ChangeNotifier {
       // Since we're working with global offset, we need to update the individual offsets
       fiducial.individualOffsetX += rotatedX - currentX;
       fiducial.individualOffsetY += rotatedY - currentY;
+      fiducial.isManual = true;
     }
 
     _markAsModified();
@@ -138,7 +149,7 @@ class GridProvider extends ChangeNotifier {
     }
   }
 
-  /// Runs grid processing (5-second mock delay).
+  /// Runs grid processing and exports results to CSV.
   Future<void> runProcessing() async {
     if (_currentGridImageId == null) return;
 
@@ -148,11 +159,33 @@ class GridProvider extends ChangeNotifier {
     try {
       _currentGridData =
           await _gridService.runGridProcessing(_currentGridImageId!);
+
+      // Export to CSV after processing completes
+      final outputData = getTercenOutput();
+      if (outputData != null && outputData.isNotEmpty) {
+        // Generate filename with timestamp
+        final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').substring(0, 19);
+        final filename = 'pamsoft_grid_output_$timestamp.csv';
+
+        print('📤 Exporting ${outputData.length} grid positions to CSV');
+        CsvExport.exportGridData(outputData, filename);
+        print('✓ CSV export complete');
+      } else {
+        print('⚠️ No grid data available for export');
+      }
     } catch (e) {
       _error = e.toString();
+      print('✗ Error during processing: $e');
     } finally {
       _isProcessing = false;
       notifyListeners();
     }
+  }
+
+  /// Gets the current grid data formatted for Tercen output.
+  ///
+  /// Returns null if no grid is loaded.
+  List<Map<String, dynamic>>? getTercenOutput() {
+    return _currentGridData?.toTercenOutput();
   }
 }
