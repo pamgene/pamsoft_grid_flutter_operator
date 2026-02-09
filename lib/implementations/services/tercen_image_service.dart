@@ -11,6 +11,7 @@ import 'package:sci_tercen_client/sci_client_service_factory.dart';
 /// Tercen implementation of ImageService.
 ///
 /// Loads images from Tercen ZIP files instead of assets.
+/// Uses lazy loading: downloads ZIP once, but only extracts/converts images on demand.
 class TercenImageService implements ImageService {
   final ServiceFactory _factory;
   final TercenUrlParser _urlParser;
@@ -19,6 +20,10 @@ class TercenImageService implements ImageService {
   // Cache for loaded data
   ExperimentData? _cachedData;
   final Map<String, Uint8List> _imageCache = {};
+
+  // ZIP archive (downloaded once, extracted lazily)
+  Archive? _archive;
+  String? _loadedDocumentId;
 
   TercenImageService(this._factory, this._urlParser, this._mockService);
 
@@ -29,7 +34,7 @@ class TercenImageService implements ImageService {
     }
 
     try {
-      print('🔍 Loading experiment data from Tercen');
+      print('🔍 Loading experiment data from Tercen (lazy loading mode)');
 
       // Use DocumentIdResolver to get the actual .documentId
       final resolver = DocumentIdResolver(_urlParser);
@@ -42,11 +47,11 @@ class TercenImageService implements ImageService {
       final documentId = resolvedIds.documentId!;
       print('✓ Resolved .documentId: $documentId');
 
-      // Download and extract images from the document
-      print('📥 Downloading images for .documentId: $documentId');
-      final images = await _downloadAndExtractImages(documentId);
+      // Download ZIP and extract metadata (but don't convert images yet)
+      print('📥 Downloading ZIP file for .documentId: $documentId');
+      final images = await _downloadZipAndExtractMetadata(documentId);
 
-      print('✓ Loaded ${images.length} images total');
+      print('✓ Found ${images.length} images (will convert on demand)');
 
       // Build experiment data structure
       final experimentData = _buildExperimentData(images);
@@ -60,12 +65,14 @@ class TercenImageService implements ImageService {
     }
   }
 
-  Future<List<ImageMetadata>> _downloadAndExtractImages(String documentId) async {
+  /// Downloads ZIP file and extracts metadata only (lazy loading).
+  /// Images are converted on-demand in getImageBytes().
+  Future<List<ImageMetadata>> _downloadZipAndExtractMetadata(String documentId) async {
     try {
       // Download ZIP file from Tercen
       final fileService = _factory.fileService;
 
-      print('📥 Downloading file for .documentId: $documentId');
+      print('📥 Downloading ZIP for .documentId: $documentId');
 
       // Accumulate chunks from stream
       final chunks = <List<int>>[];
@@ -84,48 +91,33 @@ class TercenImageService implements ImageService {
 
       print('✓ Downloaded ${zipBytes.length} bytes');
 
-      // Extract ZIP file
-      final archive = ZipDecoder().decodeBytes(zipBytes);
+      // Decode ZIP archive (but don't extract files yet)
+      _archive = ZipDecoder().decodeBytes(zipBytes);
+      _loadedDocumentId = documentId;
 
-      print('📂 Extracting ZIP archive (${archive.files.length} files)');
+      print('📂 ZIP archive contains ${_archive!.files.length} files');
 
-      // Find ImageResults/*.tif files
+      // Extract metadata only (no TIFF conversion yet)
       final images = <ImageMetadata>[];
 
-      for (final file in archive.files) {
+      for (final file in _archive!.files) {
         if (file.isFile && file.name.contains('ImageResults/') && file.name.endsWith('.tif')) {
-          print('  Processing: ${file.name}');
-
           // Extract filename from path
           final filename = file.name.split('/').last;
-          final filenameWithoutExt = filename.replaceAll('.tif', '');
 
-          // Extract file content
-          final tiffBytes = file.content as List<int>;
-          final tiffData = Uint8List.fromList(tiffBytes);
+          // Parse filename to create ImageMetadata
+          final metadata = parseFilename(filename);
+          images.add(metadata);
 
-          // Convert TIFF to PNG
-          final pngBytes = TiffConverter.tiffToPng(tiffData);
-
-          if (pngBytes != null) {
-            // Cache the PNG bytes
-            _imageCache[filenameWithoutExt] = pngBytes;
-
-            // Parse filename to create ImageMetadata
-            final metadata = parseFilename(filename);
-
-            images.add(metadata);
-
-            print('    ✓ Converted ${filename} (${tiffBytes.length} → ${pngBytes.length} bytes)');
-          } else {
-            print('    ✗ Failed to convert ${filename}');
-          }
+          print('  Found: ${filename}');
         }
       }
 
+      print('✓ Extracted metadata for ${images.length} images');
+
       return images;
     } catch (e) {
-      print('✗ Error downloading/extracting images for $documentId: $e');
+      print('✗ Error downloading ZIP for $documentId: $e');
       rethrow;
     }
   }
@@ -173,15 +165,59 @@ class TercenImageService implements ImageService {
 
   @override
   Future<Uint8List?> getImageBytes(String imageId) async {
-    // Return cached PNG bytes
+    // Return cached PNG bytes if available
     if (_imageCache.containsKey(imageId)) {
+      print('  ✓ Returning cached image: $imageId');
       return _imageCache[imageId];
     }
 
-    // If not in cache, load experiment data first
-    await loadExperimentData();
+    // Ensure ZIP is loaded
+    if (_archive == null) {
+      print('  Loading experiment data first...');
+      await loadExperimentData();
+    }
 
-    return _imageCache[imageId];
+    if (_archive == null) {
+      print('  ✗ No archive available');
+      return null;
+    }
+
+    try {
+      // Find the TIFF file in the archive
+      print('  🔍 Extracting and converting: $imageId.tif');
+
+      for (final file in _archive!.files) {
+        if (file.isFile &&
+            file.name.contains('ImageResults/') &&
+            file.name.endsWith('$imageId.tif')) {
+
+          // Extract TIFF bytes
+          final tiffBytes = file.content as List<int>;
+          final tiffData = Uint8List.fromList(tiffBytes);
+
+          print('    Converting TIFF (${tiffBytes.length} bytes)');
+
+          // Convert TIFF to PNG
+          final pngBytes = TiffConverter.tiffToPng(tiffData);
+
+          if (pngBytes != null) {
+            // Cache the result
+            _imageCache[imageId] = pngBytes;
+            print('    ✓ Converted to PNG (${pngBytes.length} bytes)');
+            return pngBytes;
+          } else {
+            print('    ✗ Failed to convert TIFF to PNG');
+            return null;
+          }
+        }
+      }
+
+      print('  ✗ Image not found in archive: $imageId');
+      return null;
+    } catch (e) {
+      print('  ✗ Error extracting image $imageId: $e');
+      return null;
+    }
   }
 
   @override
