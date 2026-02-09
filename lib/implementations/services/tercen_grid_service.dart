@@ -90,12 +90,25 @@ class TercenGridService implements GridService {
 
     final taskJson = cubeTask.toJson();
 
+    // Debug: Log available task properties
+    print('📋 Available task properties: ${taskJson.keys.join(", ")}');
+
     // Grid data comes from the OUTPUT (schema), not INPUT (query)
     // query = input data (images), schema = output data (gridX, gridY, etc.)
     final schemaJson = taskJson['schema'] as Map?;
 
+    if (schemaJson == null) {
+      print('⚠️ Task has no schema property');
+      print('📋 Checking if schema has relation property...');
+    }
+
+    if (schemaJson != null && schemaJson['relation'] == null) {
+      print('⚠️ Schema exists but has no relation property');
+      print('📋 Schema properties: ${schemaJson.keys.join(", ")}');
+    }
+
     if (schemaJson == null || schemaJson['relation'] == null) {
-      throw Exception('Task has no schema relation');
+      throw Exception('Task has no schema.relation - available properties: ${taskJson.keys.join(", ")}');
     }
 
     print('📋 Using schema.relation (output table) for grid data');
