@@ -105,6 +105,7 @@ class DocumentIdResolver {
         final kind = currentRelation['kind'] as String?;
         print('📋 Relation[$depth] kind: $kind');
 
+        // Check if this is InMemoryRelation (has inMemoryTable)
         if (kind == 'InMemoryRelation' && currentRelation['inMemoryTable'] != null) {
           print('✓ Found InMemoryRelation at depth $depth');
 
@@ -159,7 +160,16 @@ class DocumentIdResolver {
         }
 
         // Navigate deeper into relation tree
-        currentRelation = currentRelation['relation'] as Map?;
+        // Try 'relation' first (for most wrappers), then 'mainRelation' (for CompositeRelation)
+        if (currentRelation['relation'] != null) {
+          currentRelation = currentRelation['relation'] as Map?;
+        } else if (kind == 'CompositeRelation' && currentRelation['mainRelation'] != null) {
+          print('📋 CompositeRelation detected, navigating to mainRelation...');
+          currentRelation = currentRelation['mainRelation'] as Map?;
+        } else {
+          print('⚠️ No child relation found at depth $depth');
+          break;
+        }
         depth++;
       }
 
