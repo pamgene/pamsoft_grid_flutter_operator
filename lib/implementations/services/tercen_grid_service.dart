@@ -96,22 +96,35 @@ class TercenGridService implements GridService {
     }
 
     var currentRelation = queryJson['relation'] as Map?;
+    int depth = 0;
 
     // Navigate through relation structure to find InMemoryTable
-    while (currentRelation != null) {
-      if (currentRelation['kind'] == 'InMemoryRelation' &&
-          currentRelation['inMemoryTable'] != null) {
+    while (currentRelation != null && depth < 20) {
+      final kind = currentRelation['kind'] as String?;
+      print('📋 Grid Relation[$depth] kind: $kind');
 
+      if (kind == 'InMemoryRelation' && currentRelation['inMemoryTable'] != null) {
+        print('✓ Found InMemoryRelation at depth $depth');
         final inMemoryTable = currentRelation['inMemoryTable'] as Map;
         final result = await _parseGridDataFromJson(inMemoryTable, gridImageId);
         return result;
       }
 
       // Navigate deeper into relation tree
-      currentRelation = currentRelation['relation'] as Map?;
+      // Try 'relation' first (for most wrappers), then 'mainRelation' (for CompositeRelation)
+      if (currentRelation['relation'] != null) {
+        currentRelation = currentRelation['relation'] as Map?;
+      } else if (kind == 'CompositeRelation' && currentRelation['mainRelation'] != null) {
+        print('📋 CompositeRelation detected, navigating to mainRelation...');
+        currentRelation = currentRelation['mainRelation'] as Map?;
+      } else {
+        print('⚠️ No child relation found at depth $depth');
+        break;
+      }
+      depth++;
     }
 
-    throw Exception('No InMemoryTable found in task JSON');
+    throw Exception('No InMemoryTable found in task JSON after checking $depth levels');
   }
 
   Future<GridData> _parseGridDataFromJson(
