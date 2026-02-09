@@ -81,12 +81,24 @@ class DocumentIdResolver {
       // Get the relation from the query
       final relation = cubeTask.query.relation;
       print('📋 Query relation type: ${relation.runtimeType}');
+      print('📋 Query relation kind: ${relation.kind}');
+
+      // Check if there are any InMemoryRelations
+      final inMemoryRelations = relation.inMemoryRelations;
+      print('📋 Found ${inMemoryRelations.length} InMemoryRelation(s)');
+
+      if (inMemoryRelations.isEmpty) {
+        print('⚠️ No InMemoryRelations found - relation might need manual navigation');
+        print('⚠️ This means the table data is not directly accessible');
+        print('⚠️ The URL documentId is likely the WebAppOperator ID, not a file ID');
+        return null;
+      }
 
       // Strategy 1: Look for .documentId (actual file ID) directly
       final actualDocumentIds = <String>{};
       final documentIdAliases = <String>[];
 
-      for (var inMemoryRelation in relation.inMemoryRelations) {
+      for (var inMemoryRelation in inMemoryRelations) {
         final table = inMemoryRelation.inMemoryTable;
         final columns = table.columns;
 
@@ -158,14 +170,10 @@ class DocumentIdResolver {
         }
       }
 
-      // Strategy 3: If no .documentId or aliases found, try URL documentId
-      if (_urlParser.documentId != null && _urlParser.documentId!.isNotEmpty) {
-        print('📋 No .documentId in InMemoryRelations, trying URL documentId...');
-        print('✓ Using documentId from URL: ${_urlParser.documentId}');
-        return ResolvedIds(documentId: _urlParser.documentId);
-      }
-
-      print('⚠️ Could not resolve document ID from any source');
+      // Note: URL documentId is NOT used because it's the WebAppOperator ID,
+      // not the file document ID. The actual file ID must come from the table data.
+      print('⚠️ Could not find documentId in table data');
+      print('⚠️ URL documentId (${_urlParser.documentId}) is WebAppOperator ID, not file ID');
       return null;
     } catch (e, stackTrace) {
       print('✗ Error resolving document ID: $e');
