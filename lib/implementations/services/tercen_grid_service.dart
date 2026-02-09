@@ -96,21 +96,21 @@ class TercenGridService implements GridService {
     }
 
     print('📋 Searching for InMemoryRelation with grid data (.ci, .ri, .y columns)');
-    var currentRelation = queryJson['relation'] as Map?;
-    int depth = 0;
 
-    // Navigate through relation structure to find InMemoryTable with grid data
-    while (currentRelation != null && depth < 20) {
-      final kind = currentRelation['kind'] as String?;
-      print('📋 Grid Relation[$depth] kind: $kind');
+    // Helper function to recursively search for grid data
+    Future<GridData?> searchForGridData(Map? relation, int depth, String path) async {
+      if (relation == null || depth > 20) return null;
 
-      if (kind == 'InMemoryRelation' && currentRelation['inMemoryTable'] != null) {
-        print('📋 Found InMemoryRelation at depth $depth, checking for grid data columns...');
-        final inMemoryTable = currentRelation['inMemoryTable'] as Map;
+      final kind = relation['kind'] as String?;
+      print('📋 Grid Relation[$path] kind: $kind');
+
+      // Check if this is InMemoryRelation with grid data
+      if (kind == 'InMemoryRelation' && relation['inMemoryTable'] != null) {
+        print('📋 Found InMemoryRelation at $path, checking for grid data columns...');
+        final inMemoryTable = relation['inMemoryTable'] as Map;
         final columns = inMemoryTable['columns'] as List?;
 
         if (columns != null) {
-          // Check if this InMemoryTable has the required columns (.ci, .ri, .y)
           final columnNames = columns.map((col) => (col as Map)['name'] as String?).toSet();
           final hasRequiredColumns = columnNames.contains('.ci') &&
                                     columnNames.contains('.ri') &&
@@ -119,30 +119,57 @@ class TercenGridService implements GridService {
           print('📋 InMemoryTable has ${columns.length} columns: ${columnNames.take(10).join(", ")}${columns.length > 10 ? "..." : ""}');
 
           if (hasRequiredColumns) {
-            print('✓ Found grid data table with required columns at depth $depth');
-            final result = await _parseGridDataFromJson(inMemoryTable, gridImageId);
-            return result;
+            print('✓ Found grid data table with required columns at $path');
+            return await _parseGridDataFromJson(inMemoryTable, gridImageId);
           } else {
-            print('⚠️ InMemoryTable missing required columns (.ci, .ri, .y), continuing search...');
+            print('⚠️ InMemoryTable missing required columns (.ci, .ri, .y)');
           }
         }
       }
 
-      // Navigate deeper into relation tree
-      // Try 'relation' first (for most wrappers), then 'mainRelation' (for CompositeRelation)
-      if (currentRelation['relation'] != null) {
-        currentRelation = currentRelation['relation'] as Map?;
-      } else if (kind == 'CompositeRelation' && currentRelation['mainRelation'] != null) {
-        print('📋 CompositeRelation detected, navigating to mainRelation...');
-        currentRelation = currentRelation['mainRelation'] as Map?;
-      } else {
-        print('⚠️ No child relation found at depth $depth');
-        break;
+      // Navigate deeper based on relation type
+      if (kind == 'CompositeRelation') {
+        print('📋 CompositeRelation detected, checking mainRelation and joinOperators...');
+
+        // Check mainRelation
+        final mainRelation = relation['mainRelation'] as Map?;
+        if (mainRelation != null) {
+          final result = await searchForGridData(mainRelation, depth + 1, '$path.main');
+          if (result != null) return result;
+        }
+
+        // Check each joinOperator's rightRelation
+        final joinOperators = relation['joinOperators'] as List?;
+        if (joinOperators != null) {
+          print('📋 Found ${joinOperators.length} joinOperators to search');
+          for (int i = 0; i < joinOperators.length; i++) {
+            final joinOp = joinOperators[i] as Map?;
+            if (joinOp != null) {
+              final rightRelation = joinOp['rightRelation'] as Map?;
+              if (rightRelation != null) {
+                print('📋 Searching joinOperator[$i].rightRelation...');
+                final result = await searchForGridData(rightRelation, depth + 1, '$path.join[$i]');
+                if (result != null) return result;
+              }
+            }
+          }
+        }
+      } else if (relation['relation'] != null) {
+        // Standard relation navigation
+        return await searchForGridData(relation['relation'] as Map?, depth + 1, '$path.rel');
       }
-      depth++;
+
+      return null;
     }
 
-    throw Exception('No InMemoryTable with grid data (.ci, .ri, .y) found after checking $depth levels');
+    // Start recursive search
+    final result = await searchForGridData(queryJson['relation'] as Map?, 0, 'root');
+
+    if (result != null) {
+      return result;
+    }
+
+    throw Exception('No InMemoryTable with grid data (.ci, .ri, .y) found in query relation tree');
   }
 
   Future<GridData> _parseGridDataFromJson(
