@@ -86,16 +86,20 @@ class TercenGridService implements GridService {
     }
 
     // Use Direct JSON extraction to get all data including column/row metadata
-    print('📋 Extracting data from task JSON');
+    print('📋 Extracting grid data from task schema (output table)');
 
     final taskJson = cubeTask.toJson();
-    final queryJson = taskJson['query'] as Map?;
 
-    if (queryJson == null || queryJson['relation'] == null) {
-      throw Exception('Task has no query relation');
+    // Grid data comes from the OUTPUT (schema), not INPUT (query)
+    // query = input data (images), schema = output data (gridX, gridY, etc.)
+    final schemaJson = taskJson['schema'] as Map?;
+
+    if (schemaJson == null || schemaJson['relation'] == null) {
+      throw Exception('Task has no schema relation');
     }
 
-    var currentRelation = queryJson['relation'] as Map?;
+    print('📋 Using schema.relation (output table) for grid data');
+    var currentRelation = schemaJson['relation'] as Map?;
     int depth = 0;
 
     // Navigate through relation structure to find InMemoryTable

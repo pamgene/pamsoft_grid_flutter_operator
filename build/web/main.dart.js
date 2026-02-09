@@ -83462,10 +83462,11 @@ s=8
 break
 case 9:throw A.j(A.cM("Task is neither RunWebAppTask nor CubeQueryTask, it is "+A.x(m).l(0)))
 case 8:l=k
-case 5:A.at("\ud83d\udccb Extracting data from task JSON")
+case 5:A.at("\ud83d\udccb Extracting grid data from task schema (output table)")
 f=t.Y
-j=f.a(l.n().h(0,"query"))
-if(j==null||j.h(0,"relation")==null)throw A.j(A.cM("Task has no query relation"))
+j=f.a(l.n().h(0,"schema"))
+if(j==null||j.h(0,"relation")==null)throw A.j(A.cM("Task has no schema relation"))
+A.at("\ud83d\udccb Using schema.relation (output table) for grid data")
 i=f.a(j.h(0,"relation"))
 h=0
 case 11:if(!(i!=null&&h<20)){s=12
