@@ -86,45 +86,46 @@ class TercenGridService implements GridService {
     }
 
     // Use Direct JSON extraction to get all data including column/row metadata
-    print('📋 Extracting grid data from task schema (output table)');
+    print('📋 Extracting grid data from task query (input from previous operator)');
 
     final taskJson = cubeTask.toJson();
+    final queryJson = taskJson['query'] as Map?;
 
-    // Debug: Log available task properties
-    print('📋 Available task properties: ${taskJson.keys.join(", ")}');
-
-    // Grid data comes from the OUTPUT (schema), not INPUT (query)
-    // query = input data (images), schema = output data (gridX, gridY, etc.)
-    final schemaJson = taskJson['schema'] as Map?;
-
-    if (schemaJson == null) {
-      print('⚠️ Task has no schema property');
-      print('📋 Checking if schema has relation property...');
+    if (queryJson == null || queryJson['relation'] == null) {
+      throw Exception('Task has no query relation');
     }
 
-    if (schemaJson != null && schemaJson['relation'] == null) {
-      print('⚠️ Schema exists but has no relation property');
-      print('📋 Schema properties: ${schemaJson.keys.join(", ")}');
-    }
-
-    if (schemaJson == null || schemaJson['relation'] == null) {
-      throw Exception('Task has no schema.relation - available properties: ${taskJson.keys.join(", ")}');
-    }
-
-    print('📋 Using schema.relation (output table) for grid data');
-    var currentRelation = schemaJson['relation'] as Map?;
+    print('📋 Searching for InMemoryRelation with grid data (.ci, .ri, .y columns)');
+    var currentRelation = queryJson['relation'] as Map?;
     int depth = 0;
 
-    // Navigate through relation structure to find InMemoryTable
+    // Navigate through relation structure to find InMemoryTable with grid data
     while (currentRelation != null && depth < 20) {
       final kind = currentRelation['kind'] as String?;
       print('📋 Grid Relation[$depth] kind: $kind');
 
       if (kind == 'InMemoryRelation' && currentRelation['inMemoryTable'] != null) {
-        print('✓ Found InMemoryRelation at depth $depth');
+        print('📋 Found InMemoryRelation at depth $depth, checking for grid data columns...');
         final inMemoryTable = currentRelation['inMemoryTable'] as Map;
-        final result = await _parseGridDataFromJson(inMemoryTable, gridImageId);
-        return result;
+        final columns = inMemoryTable['columns'] as List?;
+
+        if (columns != null) {
+          // Check if this InMemoryTable has the required columns (.ci, .ri, .y)
+          final columnNames = columns.map((col) => (col as Map)['name'] as String?).toSet();
+          final hasRequiredColumns = columnNames.contains('.ci') &&
+                                    columnNames.contains('.ri') &&
+                                    columnNames.contains('.y');
+
+          print('📋 InMemoryTable has ${columns.length} columns: ${columnNames.take(10).join(", ")}${columns.length > 10 ? "..." : ""}');
+
+          if (hasRequiredColumns) {
+            print('✓ Found grid data table with required columns at depth $depth');
+            final result = await _parseGridDataFromJson(inMemoryTable, gridImageId);
+            return result;
+          } else {
+            print('⚠️ InMemoryTable missing required columns (.ci, .ri, .y), continuing search...');
+          }
+        }
       }
 
       // Navigate deeper into relation tree
@@ -141,7 +142,7 @@ class TercenGridService implements GridService {
       depth++;
     }
 
-    throw Exception('No InMemoryTable found in task JSON after checking $depth levels');
+    throw Exception('No InMemoryTable with grid data (.ci, .ri, .y) found after checking $depth levels');
   }
 
   Future<GridData> _parseGridDataFromJson(
