@@ -15,15 +15,14 @@ class ResolvedIds {
   String toString() => 'ResolvedIds(documentId: $documentId, projectId: $projectId)';
 }
 
-/// Resolves metadata IDs to data IDs.
+/// Resolves documentId aliases to actual .documentId values.
 ///
 /// Tercen separates data from metadata:
-/// - Metadata IDs: User-visible (taskId, documentId from URL)
-/// - Data IDs: Actual data references (.documentId, .projectId)
+/// - Metadata IDs: User-visible (taskId, documentId from URL) - ALIASES
+/// - Data IDs: Actual data references (.documentId, .projectId) - ACTUAL FILE IDs
 ///
 /// When a project is cloned, metadata IDs change but data IDs remain the same.
-/// This resolver navigates the task hierarchy to extract the actual data IDs
-/// needed for file operations.
+/// This resolver uses the new Relation.findDocumentId() method to resolve aliases.
 class DocumentIdResolver {
   final TercenUrlParser _urlParser;
   final String? _devZipFileId;
@@ -31,60 +30,33 @@ class DocumentIdResolver {
   DocumentIdResolver(this._urlParser, {String? devZipFileId})
       : _devZipFileId = devZipFileId;
 
-  /// Resolves document ID using hierarchical fallback strategy.
-  ///
-  /// Strategy order:
-  /// 1. Extract .documentId from task JSON (PRIMARY - PRODUCTION)
-  /// 2. Search files by workflow/step (AUTO-DISCOVERY FALLBACK)
-  /// 3. Use development hardcoded ID (DEVELOPMENT)
-  /// 4. Return null for mock fallback
+  /// Resolves document ID from task using Relation.findDocumentId().
   Future<ResolvedIds?> resolveDocumentId() async {
-    print('🔍 Resolving document ID...');
+    print('🔍 Resolving document ID using Relation.findDocumentId()...');
 
-    // Strategy 1: Extract from task JSON
-    if (_urlParser.taskId != null && _urlParser.taskId!.isNotEmpty) {
-      final idsFromTask = await _tryGetFromTaskJson();
-      if (idsFromTask != null && idsFromTask.hasAnyId) {
-        print('✓ Resolved from task JSON: $idsFromTask');
-        return idsFromTask;
-      }
-    }
-
-    // Strategy 2: Search files by workflow/step
-    if (_urlParser.isWorkflowMode) {
-      final docIdFromFiles = await _tryFindFilesByWorkflowStep();
-      if (docIdFromFiles != null) {
-        print('✓ Resolved from file search: $docIdFromFiles');
-        return ResolvedIds(documentId: docIdFromFiles);
-      }
-    }
-
-    // Strategy 3: Use development hardcoded ID
+    // Development mode: use hardcoded ID
     if (_devZipFileId != null && _devZipFileId.isNotEmpty) {
       print('🔧 Using development hardcoded ID: $_devZipFileId');
       return ResolvedIds(documentId: _devZipFileId);
     }
 
-    // Strategy 4: Return null for mock fallback
-    print('⚠️ Could not resolve document ID - will use mock data');
-    return null;
-  }
+    // Production mode: resolve from task
+    if (_urlParser.taskId == null || _urlParser.taskId!.isEmpty) {
+      print('⚠️ No taskId available');
+      return null;
+    }
 
-  /// Extracts .documentId from task JSON (bypasses schema filtering).
-  Future<ResolvedIds?> _tryGetFromTaskJson() async {
     try {
       final taskService = tercen.ServiceFactory().taskService;
       final task = await taskService.get(_urlParser.taskId!);
 
       print('📋 Task type: ${task.runtimeType}');
-      print('📋 Task kind: ${task.kind}');
 
       // Navigate to CubeQueryTask
       CubeQueryTask? cubeTask;
 
       if (task is RunWebAppTask) {
         print('📋 RunWebAppTask detected, navigating to cubeQueryTask...');
-
         if (task.cubeQueryTaskId.isEmpty) {
           print('⚠️ RunWebAppTask has empty cubeQueryTaskId');
           return null;
@@ -106,104 +78,69 @@ class DocumentIdResolver {
         return null;
       }
 
-      // Extract .documentId from JSON (bypasses schema filtering)
-      return _extractDocumentIdFromJson(cubeTask);
-    } catch (e) {
-      print('✗ Error extracting from task JSON: $e');
-      return null;
-    }
-  }
+      // Get the relation from the query
+      final relation = cubeTask.query.relation;
+      print('📋 Query relation type: ${relation.runtimeType}');
 
-  /// Extracts .documentId from CubeQueryTask JSON structure.
-  ResolvedIds? _extractDocumentIdFromJson(CubeQueryTask cubeTask) {
-    try {
-      final taskJson = cubeTask.toJson();
-      final queryJson = taskJson['query'] as Map?;
+      // Look for documentId aliases in the InMemoryRelations
+      final documentIdAliases = <String>[];
 
-      if (queryJson == null || queryJson['relation'] == null) {
-        print('⚠️ Task has no query relation');
-        return null;
-      }
+      for (var inMemoryRelation in relation.inMemoryRelations) {
+        final table = inMemoryRelation.inMemoryTable;
+        final columns = table.columns;
 
-      String? dotDocumentId;
-      String? dotProjectId;
-      var currentRelation = queryJson['relation'] as Map?;
+        // Find the 'documentId' (alias) column
+        final aliasColumn = columns
+            .where((col) => col.type == 'string')
+            .where((col) => col.name == Relation.DocumentIdAlias ||
+                           col.name.endsWith('.${Relation.DocumentIdAlias}'))
+            .firstOrNull;
 
-      // Navigate through relation structure to find InMemoryTable
-      while (currentRelation != null) {
-        if (currentRelation['kind'] == 'InMemoryRelation' &&
-            currentRelation['inMemoryTable'] != null) {
-          final inMemoryTable = currentRelation['inMemoryTable'] as Map;
-          final columns = inMemoryTable['columns'] as List?;
+        if (aliasColumn != null && aliasColumn.values != null) {
+          final aliases = (aliasColumn.values as List)
+              .cast<String?>()
+              .where((val) => val != null && val.isNotEmpty)
+              .cast<String>()
+              .toSet();
 
-          if (columns != null) {
-            for (final col in columns) {
-              final colMap = col as Map;
-              final name = colMap['name'] as String?;
-              final values = colMap['values'] as List?;
-
-              if (name == '.documentId' && values != null && values.isNotEmpty) {
-                dotDocumentId = values.first?.toString();
-                print('📋 Found .documentId: $dotDocumentId');
-              }
-              if (name == '.projectId' && values != null && values.isNotEmpty) {
-                dotProjectId = values.first?.toString();
-                print('📋 Found .projectId: $dotProjectId');
-              }
-            }
-          }
-          break;
+          documentIdAliases.addAll(aliases);
+          print('📋 Found ${aliases.length} documentId alias(es) in column "${aliasColumn.name}": ${aliases.join(", ")}');
         }
-
-        // Navigate deeper into relation tree
-        currentRelation = currentRelation['relation'] as Map?;
       }
 
-      if (dotDocumentId != null && dotDocumentId.isNotEmpty) {
-        return ResolvedIds(documentId: dotDocumentId, projectId: dotProjectId);
-      }
-
-      print('⚠️ Could not find .documentId in task JSON');
-      return null;
-    } catch (e) {
-      print('✗ Error parsing task JSON: $e');
-      return null;
-    }
-  }
-
-  /// Searches for files by workflow and step IDs.
-  Future<String?> _tryFindFilesByWorkflowStep() async {
-    try {
-      if (_urlParser.workflowId == null || _urlParser.stepId == null) {
+      if (documentIdAliases.isEmpty) {
+        print('⚠️ No documentId aliases found in InMemoryRelations');
         return null;
       }
 
-      print('🔍 Searching files by workflowId=${_urlParser.workflowId}, stepId=${_urlParser.stepId}');
+      // Resolve each alias to actual .documentId using Relation.findDocumentId()
+      final resolvedDocumentIds = <String>{};
 
-      final files = await tercen.ServiceFactory().fileService
-          .findFileByWorkflowIdAndStepId(
-        startKey: [_urlParser.workflowId, _urlParser.stepId],
-        endKey: [_urlParser.workflowId, _urlParser.stepId, {}],
-        limit: 10,
-        descending: false,
-      );
+      for (final alias in documentIdAliases) {
+        print('🔍 Resolving alias "$alias" to actual .documentId...');
+        final actualDocId = relation.findDocumentId(alias);
 
-      print('📋 Found ${files.length} files');
-
-      if (files.isEmpty) return null;
-
-      // Prefer ZIP files
-      final zipFiles = files.where((f) => f.name.toLowerCase().endsWith('.zip')).toList();
-      if (zipFiles.isNotEmpty) {
-        print('✓ Found ZIP file: ${zipFiles.first.name} (${zipFiles.first.id})');
-        return zipFiles.first.id;
+        if (actualDocId != null && actualDocId.isNotEmpty) {
+          resolvedDocumentIds.add(actualDocId);
+          print('✓ Resolved alias "$alias" → .documentId "$actualDocId"');
+        } else {
+          print('⚠️ Could not resolve alias "$alias"');
+        }
       }
 
-      // Fallback to first file
-      print('✓ Using first file: ${files.first.name} (${files.first.id})');
-      return files.first.id;
-    } catch (e) {
-      print('✗ Error searching files: $e');
+      if (resolvedDocumentIds.isEmpty) {
+        print('⚠️ Could not resolve any documentId aliases to .documentId');
+        return null;
+      }
+
+      // Use the first resolved .documentId
+      final documentId = resolvedDocumentIds.first;
+      print('✓ Using .documentId: $documentId');
+
+      return ResolvedIds(documentId: documentId);
+    } catch (e, stackTrace) {
+      print('✗ Error resolving document ID: $e');
+      print('Stack trace: $stackTrace');
       return null;
     }
   }
