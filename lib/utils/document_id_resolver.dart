@@ -82,14 +82,33 @@ class DocumentIdResolver {
       final relation = cubeTask.query.relation;
       print('📋 Query relation type: ${relation.runtimeType}');
 
-      // Look for documentId aliases in the InMemoryRelations
+      // Strategy 1: Look for .documentId (actual file ID) directly
+      final actualDocumentIds = <String>{};
       final documentIdAliases = <String>[];
 
       for (var inMemoryRelation in relation.inMemoryRelations) {
         final table = inMemoryRelation.inMemoryTable;
         final columns = table.columns;
 
-        // Find the 'documentId' (alias) column
+        // Find the '.documentId' (actual file ID) column
+        final actualColumn = columns
+            .where((col) => col.type == 'string')
+            .where((col) => col.name == Relation.DocumentId ||
+                           col.name.endsWith('.${Relation.DocumentId}'))
+            .firstOrNull;
+
+        if (actualColumn != null && actualColumn.values != null) {
+          final values = (actualColumn.values as List)
+              .cast<String?>()
+              .where((val) => val != null && val.isNotEmpty)
+              .cast<String>()
+              .toSet();
+
+          actualDocumentIds.addAll(values);
+          print('📋 Found ${values.length} .documentId value(s) in column "${actualColumn.name}": ${values.join(", ")}');
+        }
+
+        // Also find 'documentId' (alias) columns for fallback
         final aliasColumn = columns
             .where((col) => col.type == 'string')
             .where((col) => col.name == Relation.DocumentIdAlias ||
@@ -108,36 +127,46 @@ class DocumentIdResolver {
         }
       }
 
-      if (documentIdAliases.isEmpty) {
-        print('⚠️ No documentId aliases found in InMemoryRelations');
-        return null;
+      // If we found .documentId directly, use it
+      if (actualDocumentIds.isNotEmpty) {
+        final documentId = actualDocumentIds.first;
+        print('✓ Using .documentId directly: $documentId');
+        return ResolvedIds(documentId: documentId);
       }
 
-      // Resolve each alias to actual .documentId using Relation.findDocumentId()
-      final resolvedDocumentIds = <String>{};
+      // Strategy 2: If no .documentId found, try resolving aliases
+      if (documentIdAliases.isNotEmpty) {
+        print('📋 No .documentId found, attempting to resolve aliases...');
+        final resolvedDocumentIds = <String>{};
 
-      for (final alias in documentIdAliases) {
-        print('🔍 Resolving alias "$alias" to actual .documentId...');
-        final actualDocId = relation.findDocumentId(alias);
+        for (final alias in documentIdAliases) {
+          print('🔍 Resolving alias "$alias" to actual .documentId...');
+          final actualDocId = relation.findDocumentId(alias);
 
-        if (actualDocId != null && actualDocId.isNotEmpty) {
-          resolvedDocumentIds.add(actualDocId);
-          print('✓ Resolved alias "$alias" → .documentId "$actualDocId"');
-        } else {
-          print('⚠️ Could not resolve alias "$alias"');
+          if (actualDocId != null && actualDocId.isNotEmpty) {
+            resolvedDocumentIds.add(actualDocId);
+            print('✓ Resolved alias "$alias" → .documentId "$actualDocId"');
+          } else {
+            print('⚠️ Could not resolve alias "$alias"');
+          }
+        }
+
+        if (resolvedDocumentIds.isNotEmpty) {
+          final documentId = resolvedDocumentIds.first;
+          print('✓ Using resolved .documentId: $documentId');
+          return ResolvedIds(documentId: documentId);
         }
       }
 
-      if (resolvedDocumentIds.isEmpty) {
-        print('⚠️ Could not resolve any documentId aliases to .documentId');
-        return null;
+      // Strategy 3: If no .documentId or aliases found, try URL documentId
+      if (_urlParser.documentId != null && _urlParser.documentId!.isNotEmpty) {
+        print('📋 No .documentId in InMemoryRelations, trying URL documentId...');
+        print('✓ Using documentId from URL: ${_urlParser.documentId}');
+        return ResolvedIds(documentId: _urlParser.documentId);
       }
 
-      // Use the first resolved .documentId
-      final documentId = resolvedDocumentIds.first;
-      print('✓ Using .documentId: $documentId');
-
-      return ResolvedIds(documentId: documentId);
+      print('⚠️ Could not resolve document ID from any source');
+      return null;
     } catch (e, stackTrace) {
       print('✗ Error resolving document ID: $e');
       print('Stack trace: $stackTrace');
