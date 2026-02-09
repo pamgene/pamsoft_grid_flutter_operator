@@ -83,14 +83,13 @@ class DocumentIdResolver {
       print('📋 Query relation type: ${relation.runtimeType}');
       print('📋 Query relation kind: ${relation.kind}');
 
-      // Check if there are any InMemoryRelations
-      final inMemoryRelations = relation.inMemoryRelations;
-      print('📋 Found ${inMemoryRelations.length} InMemoryRelation(s)');
+      // Navigate through relation hierarchy to find InMemoryRelations
+      // (GatherRelation, JoinRelation, etc. wrap InMemoryRelations)
+      final taskJson = cubeTask.toJson();
+      final queryJson = taskJson['query'] as Map?;
 
-      if (inMemoryRelations.isEmpty) {
-        print('⚠️ No InMemoryRelations found - relation might need manual navigation');
-        print('⚠️ This means the table data is not directly accessible');
-        print('⚠️ The URL documentId is likely the WebAppOperator ID, not a file ID');
+      if (queryJson == null || queryJson['relation'] == null) {
+        print('⚠️ Task has no query relation');
         return null;
       }
 
@@ -98,45 +97,70 @@ class DocumentIdResolver {
       final actualDocumentIds = <String>{};
       final documentIdAliases = <String>[];
 
-      for (var inMemoryRelation in inMemoryRelations) {
-        final table = inMemoryRelation.inMemoryTable;
-        final columns = table.columns;
+      var currentRelation = queryJson['relation'] as Map?;
+      int depth = 0;
 
-        // Find the '.documentId' (actual file ID) column
-        final actualColumn = columns
-            .where((col) => col.type == 'string')
-            .where((col) => col.name == Relation.DocumentId ||
-                           col.name.endsWith('.${Relation.DocumentId}'))
-            .firstOrNull;
+      // Navigate through relation hierarchy
+      while (currentRelation != null && depth < 20) {
+        final kind = currentRelation['kind'] as String?;
+        print('📋 Relation[$depth] kind: $kind');
 
-        if (actualColumn != null && actualColumn.values != null) {
-          final values = (actualColumn.values as List)
-              .cast<String?>()
-              .where((val) => val != null && val.isNotEmpty)
-              .cast<String>()
-              .toSet();
+        if (kind == 'InMemoryRelation' && currentRelation['inMemoryTable'] != null) {
+          print('✓ Found InMemoryRelation at depth $depth');
 
-          actualDocumentIds.addAll(values);
-          print('📋 Found ${values.length} .documentId value(s) in column "${actualColumn.name}": ${values.join(", ")}');
+          final inMemoryTable = currentRelation['inMemoryTable'] as Map;
+          final columns = inMemoryTable['columns'] as List?;
+
+          if (columns == null) {
+            print('⚠️ InMemoryTable has no columns');
+            break;
+          }
+
+          print('📋 InMemoryTable has ${columns.length} columns');
+
+          // Search for documentId columns
+          for (final col in columns) {
+            final colMap = col as Map;
+            final name = colMap['name'] as String?;
+            final type = colMap['type'] as String?;
+            final values = colMap['values'] as List?;
+
+            if (type != 'string' || values == null || values.isEmpty) {
+              continue;
+            }
+
+            // Check for .documentId (actual file ID)
+            if (name == Relation.DocumentId || (name != null && name.endsWith('.${Relation.DocumentId}'))) {
+              final docIds = values
+                  .cast<String?>()
+                  .where((val) => val != null && val.isNotEmpty)
+                  .cast<String>()
+                  .toSet();
+
+              actualDocumentIds.addAll(docIds);
+              print('📋 Found ${docIds.length} .documentId value(s) in column "$name": ${docIds.join(", ")}');
+            }
+
+            // Check for documentId (alias)
+            if (name == Relation.DocumentIdAlias || (name != null && name.endsWith('.${Relation.DocumentIdAlias}'))) {
+              final aliases = values
+                  .cast<String?>()
+                  .where((val) => val != null && val.isNotEmpty)
+                  .cast<String>()
+                  .toSet();
+
+              documentIdAliases.addAll(aliases);
+              print('📋 Found ${aliases.length} documentId alias(es) in column "$name": ${aliases.join(", ")}');
+            }
+          }
+
+          // Found InMemoryTable, exit loop
+          break;
         }
 
-        // Also find 'documentId' (alias) columns for fallback
-        final aliasColumn = columns
-            .where((col) => col.type == 'string')
-            .where((col) => col.name == Relation.DocumentIdAlias ||
-                           col.name.endsWith('.${Relation.DocumentIdAlias}'))
-            .firstOrNull;
-
-        if (aliasColumn != null && aliasColumn.values != null) {
-          final aliases = (aliasColumn.values as List)
-              .cast<String?>()
-              .where((val) => val != null && val.isNotEmpty)
-              .cast<String>()
-              .toSet();
-
-          documentIdAliases.addAll(aliases);
-          print('📋 Found ${aliases.length} documentId alias(es) in column "${aliasColumn.name}": ${aliases.join(", ")}');
-        }
+        // Navigate deeper into relation tree
+        currentRelation = currentRelation['relation'] as Map?;
+        depth++;
       }
 
       // If we found .documentId directly, use it
