@@ -59,18 +59,10 @@ class LeftPanelHeader extends StatelessWidget {
   }
 
   Widget _buildExpandedHeader(ColorScheme colorScheme, bool isDarkMode, ThemeProvider themeProvider) {
-    // Text shadow for text on primary backgrounds (per design-tokens.md)
-    final textShadow = isDarkMode
-        ? const Shadow(
-            offset: Offset(0, 1),
-            blurRadius: 2,
-            color: Color.fromRGBO(109, 40, 217, 0.5), // #6D28D9 at 50%
-          )
-        : const Shadow(
-            offset: Offset(0, 1),
-            blurRadius: 2,
-            color: Color.fromRGBO(30, 64, 175, 0.5), // #1E40AF at 50%
-          );
+    // Panel Header (Accent Style) per tercen-style specs:
+    // - Light mode: primary blue (#1E40AF) background with white text
+    // - Dark mode: primary teal (#14B8A6) background with white text
+    // - No text shadows needed (excellent contrast in both modes)
 
     return Row(
       children: [
@@ -93,7 +85,6 @@ class LeftPanelHeader extends StatelessWidget {
               color: colorScheme.onPrimary,
               fontWeight: FontWeight.w600,
               fontSize: 13,
-              shadows: [textShadow],
             ),
             overflow: TextOverflow.ellipsis,
           ),

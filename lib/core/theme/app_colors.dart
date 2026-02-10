@@ -13,10 +13,15 @@ class AppColors {
   static const Color primarySurface = Color(0xFFDBEAFE);
   static const Color primaryBg = Color(0xFFEFF6FF);
 
-  // Primary (Dark Theme)
-  static const Color primaryDark = Color(0xFF6D28D9);
-  static const Color primaryDarkDarker = Color(0xFF5B21B6);
-  static const Color primaryDarkLighter = Color(0xFF7C3AED);
+  // Primary (Dark Theme) - Teal
+  static const Color primaryDark = Color(0xFF14B8A6); // teal-500
+  static const Color primaryDarkDarker = Color(0xFF0D9488); // teal-600
+  static const Color primaryDarkLighter = Color(0xFF2DD4BF); // teal-400
+  static const Color primaryDarkSurface = Color(0xFF153D47); // teal tinted surface
+  static const Color primaryDarkBg = Color(0xFF122E35); // teal tinted bg
+
+  // Links (Dark Theme) - Blue to differentiate from primary
+  static const Color linkDark = Color(0xFF60A5FA); // blue-400
 
   // Accent/Semantic colours
   static const Color green = Color(0xFF047857);
@@ -41,7 +46,7 @@ class AppColors {
   static const Color neutral50 = Color(0xFFF9FAFB);
   static const Color white = Color(0xFFFFFFFF);
 
-  // Semantic aliases for clarity
+  // Semantic aliases for clarity (Light Mode)
   static const Color textPrimary = neutral900;
   static const Color textSecondary = neutral700;
   static const Color textTertiary = neutral600;
@@ -54,6 +59,18 @@ class AppColors {
   static const Color border = neutral300;
   static const Color borderSubtle = neutral200;
 
+  // Dark Mode specific colors
+  static const Color darkPageBackground = Color(0xFF0A0A0A); // darker than neutral-900
+  static const Color darkSurface = neutral900;
+  static const Color darkSurfaceElevated = neutral800;
+  static const Color darkBorder = neutral600;
+  static const Color darkBorderSubtle = neutral700;
+  static const Color darkTextPrimary = neutral50;
+  static const Color darkTextSecondary = neutral200;
+  static const Color darkTextTertiary = neutral400;
+  static const Color darkTextMuted = neutral500;
+  static const Color darkTextDisabled = neutral600;
+
   // Status colours (Tercen semantic mapping)
   static const Color success = green;
   static const Color successLight = greenLight;
@@ -63,4 +80,10 @@ class AppColors {
   static const Color errorLight = redLight;
   static const Color info = teal;
   static const Color infoLight = tealLight;
+
+  // Status colours (Dark Mode - adjusted for better contrast)
+  static const Color successDark = Color(0xFF10B981); // green-light for dark
+  static const Color warningDark = Color(0xFFFBBF24); // amber-light for dark
+  static const Color errorDark = Color(0xFFF87171); // red-light for dark
+  static const Color infoDark = Color(0xFF60A5FA); // blue for dark
 }
