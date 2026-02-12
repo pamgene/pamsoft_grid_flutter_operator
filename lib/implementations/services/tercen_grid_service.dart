@@ -463,11 +463,14 @@ class TercenGridService implements GridService {
     print('  Output: ${outCi.length} rows');
 
     // 7. Add namespace prefixes to column names
+    final ns = await ctx.namespace;
+    print('  Operator namespace: "$ns"');
     final nameMap = await ctx.addNamespace([
       'gridX', 'gridY', 'grdXFixedPosition', 'grdYFixedPosition',
       'diameter', 'manual', 'bad', 'empty', 'grdRotation',
       'grdImageNameUsed', 'Image',
     ]);
+    print('  Namespaced columns: $nameMap');
 
     // 8. Build the output Table with TypedData on column.values
     //    TSON encoder requires dart:typed_data (Int32List, Float64List) and
