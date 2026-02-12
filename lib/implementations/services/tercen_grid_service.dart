@@ -481,6 +481,8 @@ class TercenGridService implements GridService {
     // .ci column (system column — no namespace prefix)
     final ciCol = Column();
     ciCol.name = '.ci';
+    ciCol.type = 'int32';
+    ciCol.nRows = nRows;
     ciCol.values = Int32List.fromList(outCi);
     final ciVals = I32Values();
     ciVals.values.addAll(outCi);
@@ -491,6 +493,8 @@ class TercenGridService implements GridService {
     void addDoubleCol(String name, List<double> values) {
       final col = Column();
       col.name = nameMap[name]!;
+      col.type = 'double';
+      col.nRows = nRows;
       col.values = Float64List.fromList(values);
       final f64 = F64Values();
       f64.values.addAll(values);
@@ -512,6 +516,8 @@ class TercenGridService implements GridService {
     void addStringCol(String name, List<String> values) {
       final col = Column();
       col.name = nameMap[name]!;
+      col.type = 'string';
+      col.nRows = nRows;
       col.values = CStringList.fromList(values);
       final str = StrValues();
       str.values.addAll(values);
