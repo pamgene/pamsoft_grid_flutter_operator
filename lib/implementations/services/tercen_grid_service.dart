@@ -466,7 +466,8 @@ class TercenGridService implements GridService {
       'grdImageNameUsed', 'Image',
     ]);
 
-    // 8. Build the output Table
+    // 8. Build the output Table using typed cValues containers
+    //    (TSON serialization requires I32Values/F64Values/StrValues, not plain lists)
     final nRows = outCi.length;
     final table = Table();
     table.nRows = nRows;
@@ -474,18 +475,18 @@ class TercenGridService implements GridService {
     // .ci column (system column — no namespace prefix)
     final ciCol = Column();
     ciCol.name = '.ci';
-    ciCol.type = 'int32';
-    ciCol.nRows = nRows;
-    ciCol.values = outCi;
+    final ciVals = I32Values();
+    ciVals.values.addAll(outCi);
+    ciCol.cValues = ciVals;
     table.columns.add(ciCol);
 
-    // Double columns
+    // Double columns using F64Values
     void addDoubleCol(String name, List<double> values) {
       final col = Column();
       col.name = nameMap[name]!;
-      col.type = 'double';
-      col.nRows = nRows;
-      col.values = values;
+      final f64 = F64Values();
+      f64.values.addAll(values);
+      col.cValues = f64;
       table.columns.add(col);
     }
 
@@ -499,13 +500,13 @@ class TercenGridService implements GridService {
     addDoubleCol('empty', outEmpty);
     addDoubleCol('grdRotation', outRotation);
 
-    // String columns
+    // String columns using StrValues
     void addStringCol(String name, List<String> values) {
       final col = Column();
       col.name = nameMap[name]!;
-      col.type = 'string';
-      col.nRows = nRows;
-      col.values = values;
+      final str = StrValues();
+      str.values.addAll(values);
+      col.cValues = str;
       table.columns.add(col);
     }
 
@@ -514,7 +515,7 @@ class TercenGridService implements GridService {
 
     print('  Table built: ${table.nRows} rows, ${table.columns.length} columns');
     for (final col in table.columns) {
-      print('    ${col.name} (${col.type})');
+      print('    ${col.name} (${col.cValues.runtimeType})');
     }
 
     // 9. Save to Tercen
