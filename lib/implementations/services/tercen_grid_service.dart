@@ -12,6 +12,7 @@ import 'package:tson/string_list.dart';
 /// Tercen implementation of GridService.
 ///
 /// Loads grid data from Tercen tables using OperatorContext (ctx.select/cselect/rselect).
+/// Fetches ALL data once on first access and caches parsed results for all grid images.
 class TercenGridService implements GridService {
   final ServiceFactoryBase _factory;
   final TercenUrlParser _urlParser;
@@ -20,8 +21,11 @@ class TercenGridService implements GridService {
   final Map<String, GridData> _gridDataCache = {};
   final Map<String, GridStatus> _statusCache = {};
 
-  /// Cached OperatorContext — created once and reused across loadGridData calls.
+  /// Cached OperatorContext — created once and reused.
   AbstractOperatorContext? _ctx;
+
+  /// Cached parsed Tercen data — fetched once, used for all grid images and save.
+  _TercenDataCache? _tercenData;
 
   TercenGridService(this._factory, this._urlParser, this._mockService);
 
@@ -42,53 +46,27 @@ class TercenGridService implements GridService {
     return _ctx!;
   }
 
-  @override
-  Future<GridData> loadGridData(String gridImageId) async {
-    if (_gridDataCache.containsKey(gridImageId)) {
-      return _gridDataCache[gridImageId]!;
-    }
+  /// Fetch and parse ALL Tercen data once. Subsequent calls return cached result.
+  Future<_TercenDataCache> _getTercenData() async {
+    if (_tercenData != null) return _tercenData!;
 
-    try {
-      print('🔍 Loading grid data from Tercen for $gridImageId');
-
-      final gridData = await _loadFromTercen(gridImageId);
-
-      _gridDataCache[gridImageId] = gridData;
-      _statusCache[gridImageId] = GridStatus.processed;
-
-      print('✓ Loaded ${gridData.fiducials.length} fiducials from Tercen');
-      return gridData;
-    } catch (e, stackTrace) {
-      print('❌ ERROR loading grid data from Tercen: $e');
-      print('Stack trace: $stackTrace');
-      rethrow;
-    }
-  }
-
-  Future<GridData> _loadFromTercen(String gridImageId) async {
     final ctx = await _getContext();
 
-    // 1. Fetch the three tables (mirrors R's ctx$select / ctx$cselect / ctx$rselect)
-    print('📋 Fetching main data table (.ci, .ri, .y)');
+    print('📋 Fetching ALL Tercen data (one-time)...');
     final qtData = await ctx.select(names: ['.ci', '.ri', '.y']);
-    print('✓ qtData: ${qtData.nRows} rows, ${qtData.columns.length} columns');
+    print('✓ qtData: ${qtData.nRows} rows');
 
-    final colNames = await ctx.cnames;
-    print('📋 Fetching column metadata: $colNames');
     final colData = await ctx.cselect();
     print('✓ colData: ${colData.nRows} rows, ${colData.columns.length} columns');
 
-    final rowNames = await ctx.rnames;
-    print('📋 Fetching row metadata: $rowNames');
     final rowData = await ctx.rselect();
     print('✓ rowData: ${rowData.nRows} rows, ${rowData.columns.length} columns');
 
-    // 2. Build column metadata map: ci index -> {Image, spotRow, spotCol, ID, ...}
+    // Build column metadata map: ci index -> {Image, spotRow, spotCol, ID, ...}
     final colMetadata = <int, Map<String, dynamic>>{};
     for (final col in colData.columns) {
       final values = col.values as List?;
       if (values == null) continue;
-      // Strip namespace prefix (e.g., "ds1.Image" -> "Image")
       final fieldName = col.name.contains('.')
           ? col.name.split('.').last
           : col.name;
@@ -97,24 +75,23 @@ class TercenGridService implements GridService {
         colMetadata[i]![fieldName] = values[i];
       }
     }
-    print('✓ Built column metadata for ${colMetadata.length} columns');
+    print('✓ Column metadata: ${colMetadata.length} entries');
 
-    // 3. Build row metadata map: ri index -> variable name
+    // Build row metadata map: ri index -> variable name
     final rowMetadata = <int, String>{};
     for (final col in rowData.columns) {
       final values = col.values as List?;
       if (values == null) continue;
       for (int i = 0; i < values.length; i++) {
         final varName = values[i]?.toString() ?? '';
-        // Strip namespace prefix (e.g., "ds1.gridX" -> "gridX")
         rowMetadata[i] = varName.contains('.')
             ? varName.split('.').last
             : varName;
       }
     }
-    print('✓ Built row metadata: $rowMetadata');
+    print('✓ Row metadata: $rowMetadata');
 
-    // 4. Parse qtData columns
+    // Parse qtData columns
     List ciValues = [], riValues = [];
     List<double> yValues = [];
     for (final col in qtData.columns) {
@@ -127,41 +104,69 @@ class TercenGridService implements GridService {
           yValues = (col.values as List).map((v) => (v as num).toDouble()).toList();
       }
     }
-    print('✓ Parsed ${ciValues.length} qtData rows');
 
-    // 5. Build data map: ci -> {ri -> y}
+    // Build data map: ci -> {ri -> y}
     final dataMap = <int, Map<int, double>>{};
     for (int i = 0; i < ciValues.length; i++) {
       final ci = (ciValues[i] as num).toInt();
       final ri = (riValues[i] as num).toInt();
-      final y = yValues[i];
       dataMap.putIfAbsent(ci, () => {});
-      dataMap[ci]![ri] = y;
+      dataMap[ci]![ri] = yValues[i];
     }
-    print('✓ Built data map with ${dataMap.length} column entries');
+    print('✓ Data map: ${dataMap.length} spots, ${ciValues.length} total rows');
 
-    // 6. Collect unique Image values and resolve the target image name
+    // Build image lookup: imageName -> list of ci indices
     final allImages = <String>{};
     for (final meta in colMetadata.values) {
       final img = meta['Image']?.toString();
       if (img != null) allImages.add(img);
     }
-    print('📋 Total unique Image values in data: ${allImages.length}');
-    print('📋 Looking for gridImageId: "$gridImageId"');
+    print('✓ Unique images in data: ${allImages.length}');
 
-    // Resolve gridImageId to matching Image in the data.
-    // Image names: {barcode}_{well}_{field}_{time}_{peptide}_{index}_{array}
-    // The data may only contain P94 (control peptide) images.
-    // For non-P94 images, match by barcode+well+field+time prefix.
+    _tercenData = _TercenDataCache(
+      colMetadata: colMetadata,
+      rowMetadata: rowMetadata,
+      dataMap: dataMap,
+      allImages: allImages,
+    );
+    return _tercenData!;
+  }
+
+  @override
+  Future<GridData> loadGridData(String gridImageId) async {
+    if (_gridDataCache.containsKey(gridImageId)) {
+      return _gridDataCache[gridImageId]!;
+    }
+
+    try {
+      print('🔍 Loading grid for $gridImageId');
+
+      final data = await _getTercenData();
+      final gridData = _buildGridDataForImage(data, gridImageId);
+
+      _gridDataCache[gridImageId] = gridData;
+      _statusCache[gridImageId] = GridStatus.processed;
+
+      print('✓ ${gridData.fiducials.length} fiducials for $gridImageId');
+      return gridData;
+    } catch (e, stackTrace) {
+      print('❌ ERROR loading grid data: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
+    }
+  }
+
+  /// Build GridData for a single image from the cached Tercen data.
+  GridData _buildGridDataForImage(_TercenDataCache data, String gridImageId) {
+    // Resolve gridImageId to matching Image in the data
     String? resolvedImageName;
-    if (allImages.contains(gridImageId)) {
+    if (data.allImages.contains(gridImageId)) {
       resolvedImageName = gridImageId;
     } else {
-      // Extract prefix: barcode_well_field_time (first 4 underscore-separated parts)
       final parts = gridImageId.split('_');
       if (parts.length >= 4) {
-        final prefix = parts.sublist(0, 4).join('_'); // e.g. "641031403_W1_F1_T100"
-        for (final img in allImages) {
+        final prefix = parts.sublist(0, 4).join('_');
+        for (final img in data.allImages) {
           if (img.startsWith(prefix)) {
             resolvedImageName = img;
             break;
@@ -169,19 +174,15 @@ class TercenGridService implements GridService {
         }
       }
     }
-    print('📋 Resolved to data Image: ${resolvedImageName ?? "NOT FOUND"}');
 
-    // Filter for the resolved image name and build fiducials
     final fiducials = <FiducialPosition>[];
 
-    if (resolvedImageName == null) {
-      print('⚠ No matching image found in Tercen data for $gridImageId');
-    } else {
-      for (final entry in dataMap.entries) {
+    if (resolvedImageName != null) {
+      for (final entry in data.dataMap.entries) {
         final ci = entry.key;
         final riYMap = entry.value;
 
-        final colMeta = colMetadata[ci];
+        final colMeta = data.colMetadata[ci];
         if (colMeta == null) continue;
 
         final imageName = colMeta['Image']?.toString() ?? '';
@@ -202,8 +203,7 @@ class TercenGridService implements GridService {
         for (final riEntry in riYMap.entries) {
           final ri = riEntry.key;
           final y = riEntry.value;
-          final varName = rowMetadata[ri];
-
+          final varName = data.rowMetadata[ri];
           if (varName == null || varName.isEmpty) continue;
 
           switch (varName) {
@@ -223,8 +223,6 @@ class TercenGridService implements GridService {
         }
 
         if (gridX != null && gridY != null) {
-          // Coordinate swap: Shiny uses display_x = gridY, display_y = gridX
-          // (the TIFF image is transposed for display)
           fiducials.add(FiducialPosition(
             id: '$ci',
             ci: ci,
@@ -243,8 +241,6 @@ class TercenGridService implements GridService {
         }
       }
     }
-
-    print('✓ Created ${fiducials.length} fiducials for grid $gridImageId');
 
     final config = GridConfiguration.evolve3(
       imageWidth: 552,
@@ -292,73 +288,23 @@ class TercenGridService implements GridService {
   Future<void> saveAllGrids(List<String> allGridImageIds) async {
     final ctx = await _getContext();
 
-    print('📤 saveAllGrids: Loading all Tercen data for output...');
+    print('📤 saveAllGrids: Using cached Tercen data...');
     await ctx.progress('Loading data...', actual: 0, total: 3);
 
-    // 1. Ensure all grid images are loaded (lazy load any unvisited ones)
+    // 1. Get cached data (already fetched during loadGridData calls)
+    final data = await _getTercenData();
+
+    // 2. Ensure all grid images are loaded (lazy load any unvisited ones)
     for (final gridImageId in allGridImageIds) {
       if (!_gridDataCache.containsKey(gridImageId)) {
         print('  Loading unvisited grid: $gridImageId');
-        await loadGridData(gridImageId);
+        _gridDataCache[gridImageId] = _buildGridDataForImage(data, gridImageId);
       }
     }
-
-    // 2. Load ALL original data from Tercen (unfiltered - all spots across all images)
-    final qtData = await ctx.select(names: ['.ci', '.ri', '.y']);
-    final colData = await ctx.cselect();
-    final rowData = await ctx.rselect();
 
     await ctx.progress('Building output...', actual: 1, total: 3);
 
-    // 3. Build metadata maps (same as _loadFromTercen but for ALL data)
-    final colMetadata = <int, Map<String, dynamic>>{};
-    for (final col in colData.columns) {
-      final values = col.values as List?;
-      if (values == null) continue;
-      final fieldName = col.name.contains('.')
-          ? col.name.split('.').last
-          : col.name;
-      for (int i = 0; i < values.length; i++) {
-        colMetadata.putIfAbsent(i, () => {});
-        colMetadata[i]![fieldName] = values[i];
-      }
-    }
-
-    final rowMetadata = <int, String>{};
-    for (final col in rowData.columns) {
-      final values = col.values as List?;
-      if (values == null) continue;
-      for (int i = 0; i < values.length; i++) {
-        final varName = values[i]?.toString() ?? '';
-        rowMetadata[i] = varName.contains('.')
-            ? varName.split('.').last
-            : varName;
-      }
-    }
-
-    // Parse qtData into dataMap: ci -> {ri -> y}
-    List ciValues = [], riValues = [];
-    List<double> yValues = [];
-    for (final col in qtData.columns) {
-      switch (col.name) {
-        case '.ci':
-          ciValues = col.values as List;
-        case '.ri':
-          riValues = col.values as List;
-        case '.y':
-          yValues = (col.values as List).map((v) => (v as num).toDouble()).toList();
-      }
-    }
-
-    final dataMap = <int, Map<int, double>>{};
-    for (int i = 0; i < ciValues.length; i++) {
-      final ci = (ciValues[i] as num).toInt();
-      final ri = (riValues[i] as num).toInt();
-      dataMap.putIfAbsent(ci, () => {});
-      dataMap[ci]![ri] = yValues[i];
-    }
-
-    // 4. Build position lookup for modified grids:
+    // 3. Build position lookup for modified grids:
     //    grdImageNameUsed -> { "row_col" -> modified fiducial data }
     // This allows applying grid changes to ALL images sharing the same grid.
     final modifiedGridLookup = <String, Map<String, _ModifiedSpot>>{};
@@ -392,15 +338,15 @@ class TercenGridService implements GridService {
 
     print('  Modified grids: ${modifiedGridLookup.keys.toList()}');
 
-    // 5. Find ri indices for each variable name
+    // 4. Find ri indices for each variable name
     final riForVar = <String, int>{};
-    for (final entry in rowMetadata.entries) {
+    for (final entry in data.rowMetadata.entries) {
       riForVar[entry.value] = entry.key;
     }
 
-    // 6. Build output arrays — one row per spot (unique .ci)
+    // 5. Build output arrays — one row per spot (unique .ci)
     // The Shiny uses .ci from gridY rows; we use all unique .ci values.
-    final allCis = dataMap.keys.toList()..sort();
+    final allCis = data.dataMap.keys.toList()..sort();
 
     final outCi = <int>[];
     final outGridX = <double>[];
@@ -416,10 +362,10 @@ class TercenGridService implements GridService {
     final outImage = <String>[];
 
     for (final ci in allCis) {
-      final colMeta = colMetadata[ci];
+      final colMeta = data.colMetadata[ci];
       if (colMeta == null) continue;
 
-      final riYMap = dataMap[ci]!;
+      final riYMap = data.dataMap[ci]!;
       final spotRow = (colMeta['spotRow'] as num?)?.toInt() ?? 0;
       final spotCol = (colMeta['spotCol'] as num?)?.toInt() ?? 0;
       final imageName = colMeta['Image']?.toString() ?? '';
@@ -462,7 +408,7 @@ class TercenGridService implements GridService {
 
     print('  Output: ${outCi.length} rows');
 
-    // 7. Add namespace prefixes to column names
+    // 6. Add namespace prefixes to column names
     final ns = await ctx.namespace;
     print('  Operator namespace: "$ns"');
     final nameMap = await ctx.addNamespace([
@@ -472,7 +418,7 @@ class TercenGridService implements GridService {
     ]);
     print('  Namespaced columns: $nameMap');
 
-    // 8. Build the output Table with TypedData on column.values
+    // 7. Build the output Table with TypedData on column.values
     //    TSON encoder requires dart:typed_data (Int32List, Float64List) and
     //    CStringList for correct binary serialization (LIST_INT32_TYPE,
     //    LIST_FLOAT64_TYPE, LIST_STRING_TYPE). Regular Dart lists serialize
@@ -536,7 +482,7 @@ class TercenGridService implements GridService {
       print('    ${col.name} (${col.cValues.runtimeType})');
     }
 
-    // 9. Save to Tercen
+    // 8. Save to Tercen
     await ctx.progress('Saving to Tercen...', actual: 2, total: 3);
     print('📤 Saving table to Tercen...');
 
@@ -545,6 +491,28 @@ class TercenGridService implements GridService {
     await ctx.progress('Done', actual: 3, total: 3);
     print('✓ Save complete!');
   }
+}
+
+/// Cached parsed Tercen data — fetched once from ctx.select/cselect/rselect.
+class _TercenDataCache {
+  /// ci index -> {Image, spotRow, spotCol, ID, grdImageNameUsed, ...}
+  final Map<int, Map<String, dynamic>> colMetadata;
+
+  /// ri index -> variable name (gridX, gridY, diameter, etc.)
+  final Map<int, String> rowMetadata;
+
+  /// ci -> {ri -> y value}
+  final Map<int, Map<int, double>> dataMap;
+
+  /// All unique image names found in the data.
+  final Set<String> allImages;
+
+  _TercenDataCache({
+    required this.colMetadata,
+    required this.rowMetadata,
+    required this.dataMap,
+    required this.allImages,
+  });
 }
 
 /// Helper class for modified spot data in Tercen coordinate space.
