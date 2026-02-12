@@ -3,6 +3,15 @@ class FiducialPosition {
   /// Unique identifier for this fiducial.
   final String id;
 
+  /// Original Tercen .ci column index (identifies this spot in the cross-tab).
+  final int ci;
+
+  /// Image name this spot belongs to (from Tercen column metadata).
+  final String imageName;
+
+  /// Grid image name used for positioning this spot (from Tercen column metadata).
+  final String grdImageNameUsed;
+
   /// Row in the grid (-ve for reference fiducials).
   final int row;
 
@@ -38,6 +47,9 @@ class FiducialPosition {
 
   FiducialPosition({
     required this.id,
+    this.ci = 0,
+    this.imageName = '',
+    this.grdImageNameUsed = '',
     required this.row,
     required this.col,
     required this.baseX,
@@ -64,6 +76,9 @@ class FiducialPosition {
   }) {
     return FiducialPosition(
       id: id,
+      ci: ci,
+      imageName: imageName,
+      grdImageNameUsed: grdImageNameUsed,
       row: row,
       col: col,
       baseX: baseX ?? this.baseX,

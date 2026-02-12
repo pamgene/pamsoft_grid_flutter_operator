@@ -34,4 +34,10 @@ abstract class GridService {
 
   /// Updates the status for a grid image.
   void setGridStatus(String gridImageId, GridStatus status);
+
+  /// Saves all grid data to Tercen as an operator result.
+  ///
+  /// [allGridImageIds] - All grid image IDs in the experiment.
+  /// Loads any unvisited grids, builds the output table, and saves via ctx.saveTable().
+  Future<void> saveAllGrids(List<String> allGridImageIds);
 }

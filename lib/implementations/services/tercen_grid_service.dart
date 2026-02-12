@@ -187,6 +187,7 @@ class TercenGridService implements GridService {
         final spotRow = (colMeta['spotRow'] as num?)?.toDouble() ?? 0.0;
         final spotCol = (colMeta['spotCol'] as num?)?.toDouble() ?? 0.0;
         final id = colMeta['ID'] as String? ?? '';
+        final grdImageNameUsed = colMeta['grdImageNameUsed']?.toString() ?? '';
 
         double? gridX;
         double? gridY;
@@ -223,6 +224,9 @@ class TercenGridService implements GridService {
           // (the TIFF image is transposed for display)
           fiducials.add(FiducialPosition(
             id: '$ci',
+            ci: ci,
+            imageName: imageName,
+            grdImageNameUsed: grdImageNameUsed,
             row: spotRow.toInt(),
             col: spotCol.toInt(),
             baseX: gridY,
@@ -280,4 +284,267 @@ class TercenGridService implements GridService {
   void setGridStatus(String gridImageId, GridStatus status) {
     _statusCache[gridImageId] = status;
   }
+
+  @override
+  Future<void> saveAllGrids(List<String> allGridImageIds) async {
+    final ctx = await _getContext();
+
+    print('📤 saveAllGrids: Loading all Tercen data for output...');
+    await ctx.progress('Loading data...', actual: 0, total: 3);
+
+    // 1. Ensure all grid images are loaded (lazy load any unvisited ones)
+    for (final gridImageId in allGridImageIds) {
+      if (!_gridDataCache.containsKey(gridImageId)) {
+        print('  Loading unvisited grid: $gridImageId');
+        await loadGridData(gridImageId);
+      }
+    }
+
+    // 2. Load ALL original data from Tercen (unfiltered - all spots across all images)
+    final qtData = await ctx.select(names: ['.ci', '.ri', '.y']);
+    final colData = await ctx.cselect();
+    final rowData = await ctx.rselect();
+
+    await ctx.progress('Building output...', actual: 1, total: 3);
+
+    // 3. Build metadata maps (same as _loadFromTercen but for ALL data)
+    final colMetadata = <int, Map<String, dynamic>>{};
+    for (final col in colData.columns) {
+      final values = col.values as List?;
+      if (values == null) continue;
+      final fieldName = col.name.contains('.')
+          ? col.name.split('.').last
+          : col.name;
+      for (int i = 0; i < values.length; i++) {
+        colMetadata.putIfAbsent(i, () => {});
+        colMetadata[i]![fieldName] = values[i];
+      }
+    }
+
+    final rowMetadata = <int, String>{};
+    for (final col in rowData.columns) {
+      final values = col.values as List?;
+      if (values == null) continue;
+      for (int i = 0; i < values.length; i++) {
+        final varName = values[i]?.toString() ?? '';
+        rowMetadata[i] = varName.contains('.')
+            ? varName.split('.').last
+            : varName;
+      }
+    }
+
+    // Parse qtData into dataMap: ci -> {ri -> y}
+    List ciValues = [], riValues = [];
+    List<double> yValues = [];
+    for (final col in qtData.columns) {
+      switch (col.name) {
+        case '.ci':
+          ciValues = col.values as List;
+        case '.ri':
+          riValues = col.values as List;
+        case '.y':
+          yValues = (col.values as List).map((v) => (v as num).toDouble()).toList();
+      }
+    }
+
+    final dataMap = <int, Map<int, double>>{};
+    for (int i = 0; i < ciValues.length; i++) {
+      final ci = (ciValues[i] as num).toInt();
+      final ri = (riValues[i] as num).toInt();
+      dataMap.putIfAbsent(ci, () => {});
+      dataMap[ci]![ri] = yValues[i];
+    }
+
+    // 4. Build position lookup for modified grids:
+    //    grdImageNameUsed -> { "row_col" -> modified fiducial data }
+    // This allows applying grid changes to ALL images sharing the same grid.
+    final modifiedGridLookup = <String, Map<String, _ModifiedSpot>>{};
+    for (final entry in _gridDataCache.entries) {
+      final gridImageId = entry.key;
+      final gridData = entry.value;
+
+      // Only include grids that were actually modified
+      if (_statusCache[gridImageId] != GridStatus.modified) continue;
+
+      final spotLookup = <String, _ModifiedSpot>{};
+      for (final f in gridData.fiducials) {
+        // Compute final display position
+        final displayX = f.baseX + gridData.globalOffsetX + f.individualOffsetX;
+        final displayY = f.baseY + gridData.globalOffsetY + f.individualOffsetY;
+
+        // Coordinate swap back: display X → Tercen gridY, display Y → Tercen gridX
+        spotLookup['${f.row}_${f.col}'] = _ModifiedSpot(
+          tercenGridX: displayY,
+          tercenGridY: displayX,
+          diameter: f.diameter,
+          isManual: f.isManual,
+          isBad: f.isBad,
+          isEmpty: f.isEmpty,
+          rotation: gridData.rotation,
+        );
+      }
+
+      modifiedGridLookup[gridImageId] = spotLookup;
+    }
+
+    print('  Modified grids: ${modifiedGridLookup.keys.toList()}');
+
+    // 5. Find ri indices for each variable name
+    final riForVar = <String, int>{};
+    for (final entry in rowMetadata.entries) {
+      riForVar[entry.value] = entry.key;
+    }
+
+    // 6. Build output arrays — one row per spot (unique .ci)
+    // The Shiny uses .ci from gridY rows; we use all unique .ci values.
+    final allCis = dataMap.keys.toList()..sort();
+
+    final outCi = <int>[];
+    final outGridX = <double>[];
+    final outGridY = <double>[];
+    final outFixedX = <double>[];
+    final outFixedY = <double>[];
+    final outDiameter = <double>[];
+    final outManual = <double>[];
+    final outBad = <double>[];
+    final outEmpty = <double>[];
+    final outRotation = <double>[];
+    final outGrdImageNameUsed = <String>[];
+    final outImage = <String>[];
+
+    for (final ci in allCis) {
+      final colMeta = colMetadata[ci];
+      if (colMeta == null) continue;
+
+      final riYMap = dataMap[ci]!;
+      final spotRow = (colMeta['spotRow'] as num?)?.toInt() ?? 0;
+      final spotCol = (colMeta['spotCol'] as num?)?.toInt() ?? 0;
+      final imageName = colMeta['Image']?.toString() ?? '';
+      final grdImageName = colMeta['grdImageNameUsed']?.toString() ?? '';
+
+      // Check if this spot's grid was modified
+      final modifiedSpots = modifiedGridLookup[grdImageName];
+      final modifiedSpot = modifiedSpots?['${spotRow}_$spotCol'];
+
+      if (modifiedSpot != null) {
+        // Use modified positions (propagated from the grid image to all images)
+        outCi.add(ci);
+        outGridX.add(modifiedSpot.tercenGridX);
+        outGridY.add(modifiedSpot.tercenGridY);
+        outFixedX.add(modifiedSpot.tercenGridX); // manual: fixed = current
+        outFixedY.add(modifiedSpot.tercenGridY);
+        outDiameter.add(modifiedSpot.diameter);
+        outManual.add(modifiedSpot.isManual ? 1.0 : 0.0);
+        outBad.add(modifiedSpot.isBad ? 1.0 : 0.0);
+        outEmpty.add(modifiedSpot.isEmpty ? 1.0 : 0.0);
+        outRotation.add(modifiedSpot.rotation);
+        outGrdImageNameUsed.add(grdImageName);
+        outImage.add(imageName);
+      } else {
+        // Use original values from Tercen data
+        outCi.add(ci);
+        outGridX.add(riYMap[riForVar['gridX']] ?? 0.0);
+        outGridY.add(riYMap[riForVar['gridY']] ?? 0.0);
+        outFixedX.add(riYMap[riForVar['grdXFixedPosition']] ?? 0.0);
+        outFixedY.add(riYMap[riForVar['grdYFixedPosition']] ?? 0.0);
+        outDiameter.add(riYMap[riForVar['diameter']] ?? 0.0);
+        outManual.add(riYMap[riForVar['manual']] ?? 0.0);
+        outBad.add(riYMap[riForVar['bad']] ?? 0.0);
+        outEmpty.add(riYMap[riForVar['empty']] ?? 0.0);
+        outRotation.add(riYMap[riForVar['grdRotation']] ?? 0.0);
+        outGrdImageNameUsed.add(grdImageName);
+        outImage.add(imageName);
+      }
+    }
+
+    print('  Output: ${outCi.length} rows');
+
+    // 7. Add namespace prefixes to column names
+    final nameMap = await ctx.addNamespace([
+      'gridX', 'gridY', 'grdXFixedPosition', 'grdYFixedPosition',
+      'diameter', 'manual', 'bad', 'empty', 'grdRotation',
+      'grdImageNameUsed', 'Image',
+    ]);
+
+    // 8. Build the output Table
+    final nRows = outCi.length;
+    final table = Table();
+    table.nRows = nRows;
+
+    // .ci column (system column — no namespace prefix)
+    final ciCol = Column();
+    ciCol.name = '.ci';
+    ciCol.type = 'int32';
+    ciCol.nRows = nRows;
+    ciCol.values = outCi;
+    table.columns.add(ciCol);
+
+    // Double columns
+    void addDoubleCol(String name, List<double> values) {
+      final col = Column();
+      col.name = nameMap[name]!;
+      col.type = 'double';
+      col.nRows = nRows;
+      col.values = values;
+      table.columns.add(col);
+    }
+
+    addDoubleCol('gridX', outGridX);
+    addDoubleCol('gridY', outGridY);
+    addDoubleCol('grdXFixedPosition', outFixedX);
+    addDoubleCol('grdYFixedPosition', outFixedY);
+    addDoubleCol('diameter', outDiameter);
+    addDoubleCol('manual', outManual);
+    addDoubleCol('bad', outBad);
+    addDoubleCol('empty', outEmpty);
+    addDoubleCol('grdRotation', outRotation);
+
+    // String columns
+    void addStringCol(String name, List<String> values) {
+      final col = Column();
+      col.name = nameMap[name]!;
+      col.type = 'string';
+      col.nRows = nRows;
+      col.values = values;
+      table.columns.add(col);
+    }
+
+    addStringCol('grdImageNameUsed', outGrdImageNameUsed);
+    addStringCol('Image', outImage);
+
+    print('  Table built: ${table.nRows} rows, ${table.columns.length} columns');
+    for (final col in table.columns) {
+      print('    ${col.name} (${col.type})');
+    }
+
+    // 9. Save to Tercen
+    await ctx.progress('Saving to Tercen...', actual: 2, total: 3);
+    print('📤 Saving table to Tercen...');
+
+    await ctx.saveTable(table);
+
+    await ctx.progress('Done', actual: 3, total: 3);
+    print('✓ Save complete!');
+  }
+}
+
+/// Helper class for modified spot data in Tercen coordinate space.
+class _ModifiedSpot {
+  final double tercenGridX;
+  final double tercenGridY;
+  final double diameter;
+  final bool isManual;
+  final bool isBad;
+  final bool isEmpty;
+  final double rotation;
+
+  _ModifiedSpot({
+    required this.tercenGridX,
+    required this.tercenGridY,
+    required this.diameter,
+    required this.isManual,
+    required this.isBad,
+    required this.isEmpty,
+    required this.rotation,
+  });
 }

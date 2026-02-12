@@ -229,4 +229,10 @@ class MockGridService implements GridService {
   void setGridStatus(String gridImageId, GridStatus status) {
     _statusCache[gridImageId] = status;
   }
+
+  @override
+  Future<void> saveAllGrids(List<String> allGridImageIds) async {
+    // Mock: no-op (CSV export handled separately)
+    print('MockGridService.saveAllGrids: no-op');
+  }
 }

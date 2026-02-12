@@ -3,7 +3,7 @@ import 'package:pamsoft_grid_flutter_operator/di/service_locator.dart';
 import 'package:pamsoft_grid_flutter_operator/models/grid_data.dart';
 import 'package:pamsoft_grid_flutter_operator/models/enums.dart';
 import 'package:pamsoft_grid_flutter_operator/services/grid_service.dart';
-import 'package:pamsoft_grid_flutter_operator/utils/csv_export.dart';
+import 'package:pamsoft_grid_flutter_operator/services/image_service.dart';
 import 'dart:math' as math;
 
 /// Provider for managing grid state and interactions.
@@ -149,43 +149,39 @@ class GridProvider extends ChangeNotifier {
     }
   }
 
-  /// Runs grid processing and exports results to CSV.
+  /// Saves all grid adjustments to Tercen.
+  ///
+  /// Collects all grid data (modified and unmodified) across all grid images,
+  /// builds the output table, and saves via ctx.saveTable().
   Future<void> runProcessing() async {
-    if (_currentGridImageId == null) return;
-
     _isProcessing = true;
+    _error = null;
     notifyListeners();
 
     try {
-      _currentGridData =
-          await _gridService.runGridProcessing(_currentGridImageId!);
-
-      // Export to CSV after processing completes
-      final outputData = getTercenOutput();
-      if (outputData != null && outputData.isNotEmpty) {
-        // Generate filename with timestamp
-        final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').substring(0, 19);
-        final filename = 'pamsoft_grid_output_$timestamp.csv';
-
-        print('📤 Exporting ${outputData.length} grid positions to CSV');
-        CsvExport.exportGridData(outputData, filename);
-        print('✓ CSV export complete');
-      } else {
-        print('⚠️ No grid data available for export');
+      // Save current grid to cache before saving
+      if (_currentGridImageId != null && _currentGridData != null) {
+        await _gridService.saveGridAdjustments(
+            _currentGridImageId!, _currentGridData!);
       }
+
+      // Get all grid image IDs from the image service
+      final imageService = locator<ImageService>();
+      final gridImages = await imageService.getGridImages();
+      final allGridImageIds = gridImages.map((g) => g.id).toList();
+
+      print('📤 Saving all grids to Tercen (${allGridImageIds.length} grid images)');
+
+      // Save all grids to Tercen
+      await _gridService.saveAllGrids(allGridImageIds);
+
+      print('✓ All grids saved to Tercen');
     } catch (e) {
       _error = e.toString();
-      print('✗ Error during processing: $e');
+      print('✗ Error saving to Tercen: $e');
     } finally {
       _isProcessing = false;
       notifyListeners();
     }
-  }
-
-  /// Gets the current grid data formatted for Tercen output.
-  ///
-  /// Returns null if no grid is loaded.
-  List<Map<String, dynamic>>? getTercenOutput() {
-    return _currentGridData?.toTercenOutput();
   }
 }
