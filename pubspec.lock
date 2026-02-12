@@ -340,11 +340,16 @@ packages:
   sci_tercen_client:
     dependency: "direct main"
     description:
-      path: sci_tercen_client
-      ref: "1.11.0"
-      resolved-ref: "9d8d8b6bea8efe274b334dce55b002934421492e"
-      url: "https://github.com/tercen/sci_tercen_client.git"
-    source: git
+      path: "../sci_tercen_client/sci_tercen_client"
+      relative: true
+    source: path
+    version: "1.11.0"
+  sci_tercen_context:
+    dependency: "direct main"
+    description:
+      path: "../sci_tercen_client/sci_tercen_context"
+      relative: true
+    source: path
     version: "1.11.0"
   sci_tercen_model:
     dependency: transitive
