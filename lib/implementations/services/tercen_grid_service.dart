@@ -85,230 +85,120 @@ class TercenGridService implements GridService {
       throw Exception('Task is neither RunWebAppTask nor CubeQueryTask, it is ${task.runtimeType}');
     }
 
-    // Use Direct JSON extraction to get all data including column/row metadata
-    print('📋 Extracting grid data from task query (input from previous operator)');
+    // Use tableSchemaService.select() with query hashes (equivalent of R's ctx$select)
+    final query = cubeTask.query;
+    print('📋 Query hashes — qtHash: ${query.qtHash}, columnHash: ${query.columnHash}, rowHash: ${query.rowHash}');
 
-    final taskJson = cubeTask.toJson();
-    final queryJson = taskJson['query'] as Map?;
+    // 1. Get row counts from schemas
+    final qtSchema = await _factory.tableSchemaService.get(query.qtHash);
+    final nRows = qtSchema.nRows;
+    print('✓ qtSchema: $nRows rows, ${qtSchema.columns.length} columns');
 
-    if (queryJson == null || queryJson['relation'] == null) {
-      throw Exception('Task has no query relation');
-    }
+    final colSchema = await _factory.tableSchemaService.get(query.columnHash);
+    final nCols = colSchema.nRows;
+    print('✓ colSchema: $nCols rows, ${colSchema.columns.length} columns');
 
-    print('📋 Searching for InMemoryRelation with grid data (.ci, .ri, .y columns)');
+    final rowSchema = await _factory.tableSchemaService.get(query.rowHash);
+    final nRowFactors = rowSchema.nRows;
+    print('✓ rowSchema: $nRowFactors rows, ${rowSchema.columns.length} columns');
 
-    // Helper function to recursively search for grid data
-    Future<GridData?> searchForGridData(Map? relation, int depth, String path) async {
-      if (relation == null || depth > 20) return null;
+    // 2. Fetch main data table (equivalent of ctx$select(c('.ci', '.ri', '.y')))
+    print('📋 Fetching main data table (.ci, .ri, .y) — $nRows rows');
+    final qtData = await _factory.tableSchemaService.select(
+      query.qtHash, ['.ci', '.ri', '.y'], 0, nRows,
+    );
 
-      final kind = relation['kind'] as String?;
-      print('📋 Grid Relation[$path] kind: $kind');
+    // 3. Fetch column metadata (equivalent of ctx$cselect)
+    // Discover available column names from schema (non-dot-prefixed)
+    final colFactorNames = colSchema.columns
+        .map((c) => c.name)
+        .where((name) => !name.startsWith('.'))
+        .toList();
+    print('📋 Fetching column metadata: $colFactorNames — $nCols rows');
 
-      // Check if this is InMemoryRelation with grid data
-      if (kind == 'InMemoryRelation' && relation['inMemoryTable'] != null) {
-        print('📋 Found InMemoryRelation at $path, checking for grid data columns...');
-        final inMemoryTable = relation['inMemoryTable'] as Map;
-        final columns = inMemoryTable['columns'] as List?;
+    final colData = await _factory.tableSchemaService.select(
+      query.columnHash, colFactorNames, 0, nCols,
+    );
 
-        if (columns != null) {
-          final columnNames = columns.map((col) => (col as Map)['name'] as String?).toSet();
-          final hasRequiredColumns = columnNames.contains('.ci') &&
-                                    columnNames.contains('.ri') &&
-                                    columnNames.contains('.y');
+    // 4. Fetch row metadata (equivalent of ctx$rselect)
+    final rowFactorNames = rowSchema.columns
+        .map((c) => c.name)
+        .where((name) => !name.startsWith('.'))
+        .toList();
+    print('📋 Fetching row metadata: $rowFactorNames — $nRowFactors rows');
 
-          print('📋 InMemoryTable has ${columns.length} columns: ${columnNames.take(10).join(", ")}${columns.length > 10 ? "..." : ""}');
+    final rowData = await _factory.tableSchemaService.select(
+      query.rowHash, rowFactorNames, 0, nRowFactors,
+    );
 
-          if (hasRequiredColumns) {
-            print('✓ Found grid data table with required columns at $path');
-            return await _parseGridDataFromJson(inMemoryTable, gridImageId);
-          } else {
-            print('⚠️ InMemoryTable missing required columns (.ci, .ri, .y)');
-          }
-        }
-      }
-
-      // Navigate deeper based on relation type
-      if (kind == 'CompositeRelation') {
-        print('📋 CompositeRelation detected, checking mainRelation and joinOperators...');
-
-        // Check mainRelation
-        final mainRelation = relation['mainRelation'] as Map?;
-        if (mainRelation != null) {
-          final result = await searchForGridData(mainRelation, depth + 1, '$path.main');
-          if (result != null) return result;
-        }
-
-        // Check each joinOperator's rightRelation
-        final joinOperators = relation['joinOperators'] as List?;
-        if (joinOperators != null) {
-          print('📋 Found ${joinOperators.length} joinOperators to search');
-          for (int i = 0; i < joinOperators.length; i++) {
-            final joinOp = joinOperators[i] as Map?;
-            if (joinOp != null) {
-              final rightRelation = joinOp['rightRelation'] as Map?;
-              if (rightRelation != null) {
-                print('📋 Searching joinOperator[$i].rightRelation...');
-                final result = await searchForGridData(rightRelation, depth + 1, '$path.join[$i]');
-                if (result != null) return result;
-              }
-            }
-          }
-        }
-      } else if (relation['relation'] != null) {
-        // Standard relation navigation
-        return await searchForGridData(relation['relation'] as Map?, depth + 1, '$path.rel');
-      }
-
-      return null;
-    }
-
-    // Start recursive search
-    final result = await searchForGridData(queryJson['relation'] as Map?, 0, 'root');
-
-    if (result != null) {
-      return result;
-    }
-
-    throw Exception('No InMemoryTable with grid data (.ci, .ri, .y) found in query relation tree');
-  }
-
-  Future<GridData> _parseGridDataFromJson(
-    Map inMemoryTable,
-    String gridImageId,
-  ) async {
-    final columns = inMemoryTable['columns'] as List?;
-    if (columns == null) {
-      throw Exception('No columns in InMemoryTable');
-    }
-
-    print('📊 Parsing ${columns.length} columns from InMemoryTable');
-
-    // Build column index map
-    final colIndexMap = <String, int>{};
-    for (int i = 0; i < columns.length; i++) {
-      final col = columns[i] as Map;
-      final name = col['name'] as String?;
-      if (name != null) {
-        colIndexMap[name] = i;
-      }
-    }
-
-    print('📋 Available columns: ${colIndexMap.keys.join(", ")}');
-
-    // Required indices
-    final ciIdx = colIndexMap['.ci'];
-    final riIdx = colIndexMap['.ri'];
-    final yIdx = colIndexMap['.y'];
-
-    if (ciIdx == null || riIdx == null || yIdx == null) {
-      throw Exception('Required columns not found: .ci, .ri, .y');
-    }
-
-    // Extract column arrays
-    final ciCol = columns[ciIdx] as Map;
-    final riCol = columns[riIdx] as Map;
-    final yCol = columns[yIdx] as Map;
-
-    final ciValues = ciCol['values'] as List?;
-    final riValues = riCol['values'] as List?;
-    final yValues = yCol['values'] as List?;
-
-    if (ciValues == null || riValues == null || yValues == null) {
-      throw Exception('Missing values in required columns');
-    }
-
-    final nRows = ciValues.length;
-    print('✓ Processing $nRows rows');
-
-    // Extract column metadata (Image, spotRow, spotCol, ID, etc.)
-    final columnMetadata = <int, Map<String, dynamic>>{};
-
-    for (final entry in colIndexMap.entries) {
-      final colName = entry.key;
-      final colIdx = entry.value;
-
-      // Look for column metadata columns (should be constant per .ci)
-      if (!colName.startsWith('.') &&
-          (colName.endsWith('Image') ||
-           colName.endsWith('spotRow') ||
-           colName.endsWith('spotCol') ||
-           colName.endsWith('ID') ||
-           colName.contains('documentId') ||
-           colName.endsWith('grdImageNameUsed'))) {
-
-        final col = columns[colIdx] as Map;
-        final values = col['values'] as List?;
-
-        if (values != null) {
-          // Build metadata map: group by .ci
-          for (int rowIdx = 0; rowIdx < nRows; rowIdx++) {
-            final ci = (ciValues[rowIdx] as num).toInt();
-
-            if (!columnMetadata.containsKey(ci)) {
-              columnMetadata[ci] = {};
-            }
-
-            // Extract field name (remove namespace prefix)
-            final fieldName = colName.contains('.')
-                ? colName.split('.').last
-                : colName;
-
-            columnMetadata[ci]![fieldName] = values[rowIdx];
-          }
+    // 5. Build column metadata map: ci index -> {Image, spotRow, spotCol, ID, ...}
+    final colMetadata = <int, Map<String, dynamic>>{};
+    for (final col in colData.columns) {
+      final values = col.values as List?;
+      if (values != null) {
+        for (int i = 0; i < values.length; i++) {
+          colMetadata.putIfAbsent(i, () => {});
+          // Strip namespace prefix if present (e.g., "ds1.Image" -> "Image")
+          final fieldName = col.name.contains('.')
+              ? col.name.split('.').last
+              : col.name;
+          colMetadata[i]![fieldName] = values[i];
         }
       }
     }
+    print('✓ Built column metadata for ${colMetadata.length} columns');
 
-    print('✓ Extracted metadata for ${columnMetadata.length} columns');
-
-    // Extract row metadata (variable names)
+    // 6. Build row metadata map: ri index -> variable name
     final rowMetadata = <int, String>{};
-
-    for (final entry in colIndexMap.entries) {
-      final colName = entry.key;
-      final colIdx = entry.value;
-
-      if (colName.endsWith('variable') || colName.endsWith('.variable')) {
-        final col = columns[colIdx] as Map;
-        final values = col['values'] as List?;
-
-        if (values != null) {
-          for (int rowIdx = 0; rowIdx < nRows; rowIdx++) {
-            final ri = (riValues[rowIdx] as num).toInt();
-            rowMetadata[ri] = values[rowIdx]?.toString() ?? '';
-          }
+    for (final col in rowData.columns) {
+      final values = col.values as List?;
+      if (values != null) {
+        for (int i = 0; i < values.length; i++) {
+          final varName = values[i]?.toString() ?? '';
+          // Strip namespace prefix
+          rowMetadata[i] = varName.contains('.')
+              ? varName.split('.').last
+              : varName;
         }
-        break;
       }
     }
+    print('✓ Built row metadata: $rowMetadata');
 
-    print('✓ Extracted ${rowMetadata.length} row metadata entries');
-
-    // Build map of .ci -> {.ri -> .y}
-    final dataMap = <int, Map<int, double>>{};
-
-    for (int rowIdx = 0; rowIdx < nRows; rowIdx++) {
-      final ci = (ciValues[rowIdx] as num).toInt();
-      final ri = (riValues[rowIdx] as num).toInt();
-      final y = (yValues[rowIdx] as num).toDouble();
-
-      if (!dataMap.containsKey(ci)) {
-        dataMap[ci] = {};
+    // 7. Parse qtData columns
+    List ciValues = [], riValues = [];
+    List<double> yValues = [];
+    for (final col in qtData.columns) {
+      switch (col.name) {
+        case '.ci':
+          ciValues = col.values as List;
+        case '.ri':
+          riValues = col.values as List;
+        case '.y':
+          yValues = (col.values as List).map((v) => (v as num).toDouble()).toList();
       }
+    }
+    print('✓ Parsed ${ciValues.length} qtData rows');
+
+    // 8. Build data map: ci -> {ri -> y}
+    final dataMap = <int, Map<int, double>>{};
+    for (int i = 0; i < ciValues.length; i++) {
+      final ci = (ciValues[i] as num).toInt();
+      final ri = (riValues[i] as num).toInt();
+      final y = yValues[i];
+      dataMap.putIfAbsent(ci, () => {});
       dataMap[ci]![ri] = y;
     }
-
     print('✓ Built data map with ${dataMap.length} column entries');
 
-    // Filter for the target gridImageId and build fiducials
+    // 9. Filter for the target gridImageId and build fiducials
     final fiducials = <FiducialPosition>[];
 
     for (final entry in dataMap.entries) {
       final ci = entry.key;
-      final riValues = entry.value;
+      final riYMap = entry.value;
 
       // Get column metadata for this .ci
-      final colMeta = columnMetadata[ci];
+      final colMeta = colMetadata[ci];
       if (colMeta == null) continue;
 
       // Check if this is our target grid image
@@ -328,37 +218,26 @@ class TercenGridService implements GridService {
       int? bad;
       int? empty;
 
-      for (final riEntry in riValues.entries) {
+      for (final riEntry in riYMap.entries) {
         final ri = riEntry.key;
         final y = riEntry.value;
         final varName = rowMetadata[ri];
 
         if (varName == null || varName.isEmpty) continue;
 
-        // Match variable names (strip namespace prefix like "ds1.")
-        final cleanVarName = varName.contains('.')
-            ? varName.split('.').last
-            : varName;
-
-        switch (cleanVarName) {
+        switch (varName) {
           case 'gridX':
             gridX = y;
-            break;
           case 'gridY':
             gridY = y;
-            break;
           case 'diameter':
             diameter = y;
-            break;
           case 'manual':
             manual = y.toInt();
-            break;
           case 'bad':
             bad = y.toInt();
-            break;
           case 'empty':
             empty = y.toInt();
-            break;
         }
       }
 
