@@ -219,12 +219,14 @@ class TercenGridService implements GridService {
         }
 
         if (gridX != null && gridY != null) {
+          // Coordinate swap: Shiny uses display_x = gridY, display_y = gridX
+          // (the TIFF image is transposed for display)
           fiducials.add(FiducialPosition(
             id: '$ci',
             row: spotRow.toInt(),
             col: spotCol.toInt(),
-            baseX: gridX,
-            baseY: gridY,
+            baseX: gridY,
+            baseY: gridX,
             diameter: diameter ?? 0.0,
             isReference: id == '#REF',
             isManual: manual == 1,

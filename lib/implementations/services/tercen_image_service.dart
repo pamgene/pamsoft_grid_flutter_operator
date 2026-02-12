@@ -123,16 +123,53 @@ class TercenImageService implements ImageService {
   }
 
   ExperimentData _buildExperimentData(List<ImageMetadata> images) {
-    // For Tercen integration, we treat each T100 image as a grid image
-    // Group images by their id (each image is its own group for now)
+    // Grid images are P94 T100 images only (matching Shiny behavior).
+    // Each grid image is associated with all images sharing the same
+    // barcode_well_field_time prefix (e.g. "641031403_W1_F1_T100").
     final gridImages = <ImageMetadata>[];
     final imagesByGrid = <String, List<ImageMetadata>>{};
 
+    // Group all images by barcode_well_field_time prefix
+    final groupedByPrefix = <String, List<ImageMetadata>>{};
     for (final image in images) {
-      if (image.isGridImage) {
-        gridImages.add(image);
-        imagesByGrid[image.id] = [image];
+      final parts = image.id.split('_');
+      if (parts.length >= 4) {
+        final prefix = parts.sublist(0, 4).join('_');
+        groupedByPrefix.putIfAbsent(prefix, () => []);
+        groupedByPrefix[prefix]!.add(image);
       }
+    }
+
+    // Find P94 grid images and map them to their image groups
+    for (final image in images) {
+      if (image.isGridImage && image.position == 'P94') {
+        gridImages.add(image);
+
+        // Get all images with the same prefix
+        final parts = image.id.split('_');
+        if (parts.length >= 4) {
+          final prefix = parts.sublist(0, 4).join('_');
+          final group = groupedByPrefix[prefix] ?? [image];
+
+          // Sort: grid image (P94) first, then others sorted by position
+          final sorted = List<ImageMetadata>.from(group);
+          sorted.sort((a, b) {
+            if (a.id == image.id) return -1;
+            if (b.id == image.id) return 1;
+            return a.position.compareTo(b.position);
+          });
+
+          imagesByGrid[image.id] = sorted;
+        } else {
+          imagesByGrid[image.id] = [image];
+        }
+      }
+    }
+
+    print('📋 Built experiment data: ${gridImages.length} grid images (P94 only)');
+    for (final gi in gridImages) {
+      final count = imagesByGrid[gi.id]?.length ?? 0;
+      print('  Grid: ${gi.id} → $count associated images');
     }
 
     // Use first experimentId from images, or default
