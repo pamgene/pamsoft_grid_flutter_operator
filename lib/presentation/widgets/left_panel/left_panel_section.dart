@@ -73,7 +73,10 @@ class LeftPanelSection extends StatelessWidget {
 
         // Section Content
         Padding(
-          padding: const EdgeInsets.all(AppSpacing.md),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.sm + 2,
+            vertical: AppSpacing.sm,
+          ),
           child: content,
         ),
       ],

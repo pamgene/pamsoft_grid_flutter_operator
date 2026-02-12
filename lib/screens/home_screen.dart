@@ -156,9 +156,9 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const GridDropdown(),
-            const SizedBox(height: AppSpacing.md),
-            GridNavigationButtons(),
             const SizedBox(height: AppSpacing.sm),
+            GridNavigationButtons(),
+            const SizedBox(height: AppSpacing.xs),
             const ImageNavigationButtons(),
           ],
         ),
@@ -172,10 +172,9 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const PaginationControls(),
-            const SizedBox(height: AppSpacing.sm),
-            // Image list with fixed height
+            const SizedBox(height: AppSpacing.xs),
             SizedBox(
-              height: 300,
+              height: 220,
               child: Card(
                 margin: EdgeInsets.zero,
                 child: const ImageList(),
@@ -193,7 +192,7 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             BrightnessSlider(),
-            SizedBox(height: AppSpacing.md),
+            SizedBox(height: AppSpacing.xs),
             ContrastSlider(),
           ],
         ),

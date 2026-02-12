@@ -13,37 +13,47 @@ class ActionButtons extends StatelessWidget {
         return Row(
           children: [
             Expanded(
-              child: OutlinedButton(
-                onPressed: gridProvider.isProcessing
-                    ? null
-                    : () => gridProvider.resetToDefaultGrid(),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.green,
-                  side: const BorderSide(color: Colors.green, width: 1.5),
+              child: SizedBox(
+                height: 32,
+                child: OutlinedButton(
+                  onPressed: gridProvider.isProcessing
+                      ? null
+                      : () => gridProvider.resetToDefaultGrid(),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.green,
+                    side: const BorderSide(color: Colors.green, width: 1.5),
+                    padding: EdgeInsets.zero,
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                  child: const Text('New Grid'),
                 ),
-                child: const Text('New Grid'),
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 8),
             Expanded(
-              child: ElevatedButton(
-                onPressed: gridProvider.isProcessing
-                    ? null
-                    : () => gridProvider.runProcessing(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
+              child: SizedBox(
+                height: 32,
+                child: ElevatedButton(
+                  onPressed: gridProvider.isProcessing
+                      ? null
+                      : () => gridProvider.runProcessing(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.zero,
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                  child: gridProvider.isProcessing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Run'),
                 ),
-                child: gridProvider.isProcessing
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text('Run'),
               ),
             ),
           ],

@@ -13,17 +13,31 @@ class GridNavigationButtons extends StatelessWidget {
         return Row(
           children: [
             Expanded(
-              child: ElevatedButton(
-                onPressed:
-                    imageProvider.canGoPreviousGrid ? imageProvider.previousGrid : null,
-                child: const Text('<<Grid'),
+              child: SizedBox(
+                height: 30,
+                child: ElevatedButton(
+                  onPressed:
+                      imageProvider.canGoPreviousGrid ? imageProvider.previousGrid : null,
+                  style: ElevatedButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                  child: const Text('<<Grid'),
+                ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             Expanded(
-              child: ElevatedButton(
-                onPressed: imageProvider.canGoNextGrid ? imageProvider.nextGrid : null,
-                child: const Text('Grid>>'),
+              child: SizedBox(
+                height: 30,
+                child: ElevatedButton(
+                  onPressed: imageProvider.canGoNextGrid ? imageProvider.nextGrid : null,
+                  style: ElevatedButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                  child: const Text('Grid>>'),
+                ),
               ),
             ),
           ],
@@ -44,17 +58,31 @@ class ImageNavigationButtons extends StatelessWidget {
         return Row(
           children: [
             Expanded(
-              child: ElevatedButton(
-                onPressed:
-                    imageProvider.canGoPreviousImage ? imageProvider.previousImage : null,
-                child: const Text('<Image'),
+              child: SizedBox(
+                height: 30,
+                child: ElevatedButton(
+                  onPressed:
+                      imageProvider.canGoPreviousImage ? imageProvider.previousImage : null,
+                  style: ElevatedButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                  child: const Text('<Image'),
+                ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             Expanded(
-              child: ElevatedButton(
-                onPressed: imageProvider.canGoNextImage ? imageProvider.nextImage : null,
-                child: const Text('Image>'),
+              child: SizedBox(
+                height: 30,
+                child: ElevatedButton(
+                  onPressed: imageProvider.canGoNextImage ? imageProvider.nextImage : null,
+                  style: ElevatedButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                  child: const Text('Image>'),
+                ),
               ),
             ),
           ],

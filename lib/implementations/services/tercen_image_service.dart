@@ -7,11 +7,13 @@ import 'package:pamsoft_grid_flutter_operator/utils/tercen_url_parser.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/tiff_converter.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/document_id_resolver.dart';
 import 'package:sci_tercen_client/sci_client_service_factory.dart';
+import 'package:sci_tercen_context/src/context/operator_context.dart';
 
 /// Tercen implementation of ImageService.
 ///
 /// Loads images from Tercen ZIP files instead of assets.
 /// Uses lazy loading: downloads ZIP once, but only extracts/converts images on demand.
+/// Grid image grouping comes from Tercen column data (grdImageNameUsed/Image columns).
 class TercenImageService implements ImageService {
   final ServiceFactory _factory;
   final TercenUrlParser _urlParser;
@@ -34,7 +36,7 @@ class TercenImageService implements ImageService {
     }
 
     try {
-      print('🔍 Loading experiment data from Tercen (lazy loading mode)');
+      print('Loading experiment data from Tercen (lazy loading mode)');
 
       // Use DocumentIdResolver to get the actual .documentId
       final resolver = DocumentIdResolver(_urlParser);
@@ -45,23 +47,89 @@ class TercenImageService implements ImageService {
       }
 
       final documentId = resolvedIds.documentId!;
-      print('✓ Resolved .documentId: $documentId');
+      print('Resolved .documentId: $documentId');
 
       // Download ZIP and extract metadata (but don't convert images yet)
-      print('📥 Downloading ZIP file for .documentId: $documentId');
       final images = await _downloadZipAndExtractMetadata(documentId);
+      print('Found ${images.length} images in ZIP (will convert on demand)');
 
-      print('✓ Found ${images.length} images (will convert on demand)');
+      // Fetch Tercen column data for grid image grouping
+      final tercenGrouping = await _fetchTercenGrouping();
 
-      // Build experiment data structure
-      final experimentData = _buildExperimentData(images);
+      // Build experiment data using Tercen grouping (matching Shiny behavior)
+      final experimentData = _buildExperimentData(images, tercenGrouping);
 
       _cachedData = experimentData;
       return experimentData;
     } catch (e, stackTrace) {
-      print('❌ ERROR loading experiment data from Tercen: $e');
+      print('ERROR loading experiment data from Tercen: $e');
       print('Stack trace: $stackTrace');
       rethrow;
+    }
+  }
+
+  /// Fetches grdImageNameUsed and Image columns from Tercen cselect.
+  ///
+  /// Returns a map of gridImageName -> list of associated image names,
+  /// matching Shiny's get_image_used_list() and get_image_list() logic.
+  Future<Map<String, List<String>>> _fetchTercenGrouping() async {
+    if (_urlParser.taskId == null) {
+      print('No taskId - falling back to ZIP-only grouping');
+      return {};
+    }
+
+    try {
+      final ctx = await OperatorContext.create(
+        serviceFactory: _factory,
+        taskId: _urlParser.taskId!,
+      );
+
+      // Find column names with namespace prefix
+      final colNames = await ctx.cnames;
+      final grdImageCol = colNames.firstWhere(
+        (n) => n.endsWith('grdImageNameUsed'),
+        orElse: () => '',
+      );
+      final imageCol = colNames.firstWhere(
+        (n) => n.endsWith('Image'),
+        orElse: () => '',
+      );
+
+      if (grdImageCol.isEmpty || imageCol.isEmpty) {
+        print('Missing required columns: grdImageNameUsed=$grdImageCol, Image=$imageCol');
+        return {};
+      }
+
+      print('Fetching Tercen column data: $grdImageCol, $imageCol');
+      final colData = await ctx.cselect(names: [grdImageCol, imageCol]);
+
+      List grdImageValues = [];
+      List imageValues = [];
+      for (final col in colData.columns) {
+        if (col.name == grdImageCol) grdImageValues = col.values as List;
+        if (col.name == imageCol) imageValues = col.values as List;
+      }
+
+      // Build grouping: grdImageNameUsed -> unique Image values
+      final grouping = <String, List<String>>{};
+      for (int i = 0; i < grdImageValues.length; i++) {
+        final gridName = grdImageValues[i].toString();
+        final imageName = imageValues[i].toString();
+        grouping.putIfAbsent(gridName, () => []);
+        if (!grouping[gridName]!.contains(imageName)) {
+          grouping[gridName]!.add(imageName);
+        }
+      }
+
+      print('Tercen grouping: ${grouping.length} grid images');
+      for (final entry in grouping.entries) {
+        print('  ${entry.key} -> ${entry.value.length} images');
+      }
+
+      return grouping;
+    } catch (e) {
+      print('Error fetching Tercen grouping: $e');
+      return {};
     }
   }
 
@@ -122,58 +190,87 @@ class TercenImageService implements ImageService {
     }
   }
 
-  ExperimentData _buildExperimentData(List<ImageMetadata> images) {
-    // Grid images are P94 T100 images only (matching Shiny behavior).
-    // Each grid image is associated with all images sharing the same
-    // barcode_well_field_time prefix (e.g. "641031403_W1_F1_T100").
+  /// Extracts peptide number from image name (5th underscore part).
+  /// e.g., "641031403_W1_F1_T100_P94_I473_A29" → 94
+  static int _extractPeptideNumber(String imageName) {
+    final parts = imageName.split('_');
+    if (parts.length > 4) {
+      final peptide = parts[4]; // e.g., "P94"
+      return int.tryParse(peptide.substring(1)) ?? 0;
+    }
+    return 0;
+  }
+
+  ExperimentData _buildExperimentData(
+    List<ImageMetadata> zipImages,
+    Map<String, List<String>> tercenGrouping,
+  ) {
+    // Build lookup map: image id -> ImageMetadata from ZIP
+    final metadataById = <String, ImageMetadata>{};
+    for (final img in zipImages) {
+      metadataById[img.id] = img;
+    }
+
     final gridImages = <ImageMetadata>[];
     final imagesByGrid = <String, List<ImageMetadata>>{};
 
-    // Group all images by barcode_well_field_time prefix
-    final groupedByPrefix = <String, List<ImageMetadata>>{};
-    for (final image in images) {
-      final parts = image.id.split('_');
-      if (parts.length >= 4) {
-        final prefix = parts.sublist(0, 4).join('_');
-        groupedByPrefix.putIfAbsent(prefix, () => []);
-        groupedByPrefix[prefix]!.add(image);
+    if (tercenGrouping.isNotEmpty) {
+      // Use Tercen data for grouping (matching Shiny behavior).
+      // Grid images = unique grdImageNameUsed values from Tercen cselect.
+      // Image list per grid = Image values where grdImageNameUsed == selected,
+      //   sorted: grid image first, then others by peptide number descending.
+      for (final gridName in tercenGrouping.keys) {
+        final metadata = metadataById[gridName];
+        if (metadata == null) {
+          print('Grid image $gridName not found in ZIP, skipping');
+          continue;
+        }
+
+        gridImages.add(metadata.copyWith(isGridImage: true));
+
+        // Get associated images, matching Shiny's get_image_list():
+        // 1. Remove grid image from list
+        // 2. Sort remaining by peptide number descending
+        // 3. Prepend grid image at front
+        final associatedNames = tercenGrouping[gridName]!;
+        final others = associatedNames.where((n) => n != gridName).toList();
+
+        // Sort by peptide number descending (Shiny: decreasing = TRUE)
+        others.sort((a, b) {
+          final aNum = _extractPeptideNumber(a);
+          final bNum = _extractPeptideNumber(b);
+          return bNum.compareTo(aNum);
+        });
+
+        // Build metadata list: grid image first, then sorted others
+        final sortedMetadata = <ImageMetadata>[];
+        sortedMetadata.add(metadata.copyWith(isGridImage: true));
+        for (final name in others) {
+          final meta = metadataById[name];
+          if (meta != null) {
+            sortedMetadata.add(meta);
+          }
+        }
+
+        imagesByGrid[gridName] = sortedMetadata;
       }
-    }
-
-    // Find P94 grid images and map them to their image groups
-    for (final image in images) {
-      if (image.isGridImage && image.position == 'P94') {
-        gridImages.add(image);
-
-        // Get all images with the same prefix
-        final parts = image.id.split('_');
-        if (parts.length >= 4) {
-          final prefix = parts.sublist(0, 4).join('_');
-          final group = groupedByPrefix[prefix] ?? [image];
-
-          // Sort: grid image (P94) first, then others sorted by position
-          final sorted = List<ImageMetadata>.from(group);
-          sorted.sort((a, b) {
-            if (a.id == image.id) return -1;
-            if (b.id == image.id) return 1;
-            return a.position.compareTo(b.position);
-          });
-
-          imagesByGrid[image.id] = sorted;
-        } else {
+    } else {
+      // Fallback: ZIP-only grouping (P94 T100 images as grid images)
+      for (final image in zipImages) {
+        if (image.isGridImage && image.position == 'P94') {
+          gridImages.add(image);
           imagesByGrid[image.id] = [image];
         }
       }
     }
 
-    print('📋 Built experiment data: ${gridImages.length} grid images (P94 only)');
+    print('Built experiment data: ${gridImages.length} grid images');
     for (final gi in gridImages) {
       final count = imagesByGrid[gi.id]?.length ?? 0;
-      print('  Grid: ${gi.id} → $count associated images');
+      print('  Grid: ${gi.id} -> $count associated images');
     }
 
-    // Use first experimentId from images, or default
-    final experimentId = images.isNotEmpty ? images.first.experimentId : 'tercen';
+    final experimentId = zipImages.isNotEmpty ? zipImages.first.experimentId : 'tercen';
 
     return ExperimentData(
       experimentId: experimentId,
