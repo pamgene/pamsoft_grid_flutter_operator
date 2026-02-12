@@ -137,93 +137,101 @@ class TercenGridService implements GridService {
     }
     print('✓ Built data map with ${dataMap.length} column entries');
 
-    // 6. Debug: collect ALL unique Image and grdImageNameUsed values
+    // 6. Collect unique Image values and resolve the target image name
     final allImages = <String>{};
-    final allGrdImages = <String>{};
     for (final meta in colMetadata.values) {
       final img = meta['Image']?.toString();
       if (img != null) allImages.add(img);
-      final grdImg = meta['grdImageNameUsed']?.toString();
-      if (grdImg != null) allGrdImages.add(grdImg);
     }
-    print('📋 Total unique Image values: ${allImages.length}');
-    print('📋 Total unique grdImageNameUsed values: ${allGrdImages.length}');
+    print('📋 Total unique Image values in data: ${allImages.length}');
     print('📋 Looking for gridImageId: "$gridImageId"');
-    print('📋 gridImageId found in Image set: ${allImages.contains(gridImageId)}');
-    print('📋 gridImageId found in grdImageNameUsed set: ${allGrdImages.contains(gridImageId)}');
-    // Log first 10 Image values for reference
-    print('📋 Sample Image values: ${allImages.take(10).toList()}');
-    print('📋 All grdImageNameUsed values: $allGrdImages');
 
-    // Filter for the target gridImageId and build fiducials
-    final fiducials = <FiducialPosition>[];
-
-    for (final entry in dataMap.entries) {
-      final ci = entry.key;
-      final riYMap = entry.value;
-
-      final colMeta = colMetadata[ci];
-      if (colMeta == null) continue;
-
-      // Match against Image field (ds0.Image) or grdImageNameUsed (ds1.grdImageNameUsed)
-      final imageName = colMeta['Image']?.toString() ?? '';
-      final grdImageName = colMeta['grdImageNameUsed']?.toString() ?? '';
-
-      bool matches(String value) {
-        return value == gridImageId ||
-            value == '$gridImageId.tif' ||
-            value.replaceAll('.tif', '') == gridImageId;
-      }
-
-      if (!matches(imageName) && !matches(grdImageName)) continue;
-
-      final spotRow = (colMeta['spotRow'] as num?)?.toDouble() ?? 0.0;
-      final spotCol = (colMeta['spotCol'] as num?)?.toDouble() ?? 0.0;
-      final id = colMeta['ID'] as String? ?? '';
-
-      double? gridX;
-      double? gridY;
-      double? diameter;
-      int? manual;
-      int? bad;
-      int? empty;
-
-      for (final riEntry in riYMap.entries) {
-        final ri = riEntry.key;
-        final y = riEntry.value;
-        final varName = rowMetadata[ri];
-
-        if (varName == null || varName.isEmpty) continue;
-
-        switch (varName) {
-          case 'gridX':
-            gridX = y;
-          case 'gridY':
-            gridY = y;
-          case 'diameter':
-            diameter = y;
-          case 'manual':
-            manual = y.toInt();
-          case 'bad':
-            bad = y.toInt();
-          case 'empty':
-            empty = y.toInt();
+    // Resolve gridImageId to matching Image in the data.
+    // Image names: {barcode}_{well}_{field}_{time}_{peptide}_{index}_{array}
+    // The data may only contain P94 (control peptide) images.
+    // For non-P94 images, match by barcode+well+field+time prefix.
+    String? resolvedImageName;
+    if (allImages.contains(gridImageId)) {
+      resolvedImageName = gridImageId;
+    } else {
+      // Extract prefix: barcode_well_field_time (first 4 underscore-separated parts)
+      final parts = gridImageId.split('_');
+      if (parts.length >= 4) {
+        final prefix = parts.sublist(0, 4).join('_'); // e.g. "641031403_W1_F1_T100"
+        for (final img in allImages) {
+          if (img.startsWith(prefix)) {
+            resolvedImageName = img;
+            break;
+          }
         }
       }
+    }
+    print('📋 Resolved to data Image: ${resolvedImageName ?? "NOT FOUND"}');
 
-      if (gridX != null && gridY != null) {
-        fiducials.add(FiducialPosition(
-          id: '$ci',
-          row: spotRow.toInt(),
-          col: spotCol.toInt(),
-          baseX: gridX,
-          baseY: gridY,
-          diameter: diameter ?? 0.0,
-          isReference: id == '#REF',
-          isManual: manual == 1,
-          isBad: bad == 1,
-          isEmpty: empty == 1,
-        ));
+    // Filter for the resolved image name and build fiducials
+    final fiducials = <FiducialPosition>[];
+
+    if (resolvedImageName == null) {
+      print('⚠ No matching image found in Tercen data for $gridImageId');
+    } else {
+      for (final entry in dataMap.entries) {
+        final ci = entry.key;
+        final riYMap = entry.value;
+
+        final colMeta = colMetadata[ci];
+        if (colMeta == null) continue;
+
+        final imageName = colMeta['Image']?.toString() ?? '';
+        if (imageName != resolvedImageName) continue;
+
+        final spotRow = (colMeta['spotRow'] as num?)?.toDouble() ?? 0.0;
+        final spotCol = (colMeta['spotCol'] as num?)?.toDouble() ?? 0.0;
+        final id = colMeta['ID'] as String? ?? '';
+
+        double? gridX;
+        double? gridY;
+        double? diameter;
+        int? manual;
+        int? bad;
+        int? empty;
+
+        for (final riEntry in riYMap.entries) {
+          final ri = riEntry.key;
+          final y = riEntry.value;
+          final varName = rowMetadata[ri];
+
+          if (varName == null || varName.isEmpty) continue;
+
+          switch (varName) {
+            case 'gridX':
+              gridX = y;
+            case 'gridY':
+              gridY = y;
+            case 'diameter':
+              diameter = y;
+            case 'manual':
+              manual = y.toInt();
+            case 'bad':
+              bad = y.toInt();
+            case 'empty':
+              empty = y.toInt();
+          }
+        }
+
+        if (gridX != null && gridY != null) {
+          fiducials.add(FiducialPosition(
+            id: '$ci',
+            row: spotRow.toInt(),
+            col: spotCol.toInt(),
+            baseX: gridX,
+            baseY: gridY,
+            diameter: diameter ?? 0.0,
+            isReference: id == '#REF',
+            isManual: manual == 1,
+            isBad: bad == 1,
+            isEmpty: empty == 1,
+          ));
+        }
       }
     }
 
