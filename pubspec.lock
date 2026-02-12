@@ -422,7 +422,7 @@ packages:
     source: hosted
     version: "0.7.7"
   tson:
-    dependency: transitive
+    dependency: "direct main"
     description:
       path: "."
       ref: "1.5.1"

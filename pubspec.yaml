@@ -39,6 +39,12 @@ dependencies:
   # ZIP file extraction
   archive: ^3.6.1
 
+  # TSON binary format (CStringList for typed string arrays)
+  tson:
+    git:
+      url: https://github.com/tercen/dtson
+      ref: 1.5.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

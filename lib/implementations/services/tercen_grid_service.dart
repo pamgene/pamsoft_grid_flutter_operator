@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:pamsoft_grid_flutter_operator/models/grid_data.dart';
 import 'package:pamsoft_grid_flutter_operator/models/grid_configuration.dart';
 import 'package:pamsoft_grid_flutter_operator/models/fiducial_position.dart';
@@ -5,6 +7,7 @@ import 'package:pamsoft_grid_flutter_operator/models/enums.dart';
 import 'package:pamsoft_grid_flutter_operator/services/grid_service.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/tercen_url_parser.dart';
 import 'package:sci_tercen_context/sci_tercen_context.dart';
+import 'package:tson/string_list.dart';
 
 /// Tercen implementation of GridService.
 ///
@@ -466,8 +469,11 @@ class TercenGridService implements GridService {
       'grdImageNameUsed', 'Image',
     ]);
 
-    // 8. Build the output Table using typed cValues containers
-    //    (TSON serialization requires I32Values/F64Values/StrValues, not plain lists)
+    // 8. Build the output Table with TypedData on column.values
+    //    TSON encoder requires dart:typed_data (Int32List, Float64List) and
+    //    CStringList for correct binary serialization (LIST_INT32_TYPE,
+    //    LIST_FLOAT64_TYPE, LIST_STRING_TYPE). Regular Dart lists serialize
+    //    as generic LIST_TYPE which the server rejects.
     final nRows = outCi.length;
     final table = Table();
     table.nRows = nRows;
@@ -475,15 +481,17 @@ class TercenGridService implements GridService {
     // .ci column (system column — no namespace prefix)
     final ciCol = Column();
     ciCol.name = '.ci';
+    ciCol.values = Int32List.fromList(outCi);
     final ciVals = I32Values();
     ciVals.values.addAll(outCi);
     ciCol.cValues = ciVals;
     table.columns.add(ciCol);
 
-    // Double columns using F64Values
+    // Double columns: column.values = Float64List for correct TSON encoding
     void addDoubleCol(String name, List<double> values) {
       final col = Column();
       col.name = nameMap[name]!;
+      col.values = Float64List.fromList(values);
       final f64 = F64Values();
       f64.values.addAll(values);
       col.cValues = f64;
@@ -500,10 +508,11 @@ class TercenGridService implements GridService {
     addDoubleCol('empty', outEmpty);
     addDoubleCol('grdRotation', outRotation);
 
-    // String columns using StrValues
+    // String columns: column.values = CStringList for correct TSON encoding
     void addStringCol(String name, List<String> values) {
       final col = Column();
       col.name = nameMap[name]!;
+      col.values = CStringList.fromList(values);
       final str = StrValues();
       str.values.addAll(values);
       col.cValues = str;
