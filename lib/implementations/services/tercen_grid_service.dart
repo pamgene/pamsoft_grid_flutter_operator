@@ -137,7 +137,17 @@ class TercenGridService implements GridService {
     }
     print('✓ Built data map with ${dataMap.length} column entries');
 
-    // 6. Filter for the target gridImageId and build fiducials
+    // 6. Log sample Image values to debug name matching
+    final sampleImages = <String>{};
+    for (final meta in colMetadata.values) {
+      final img = meta['Image']?.toString();
+      if (img != null) sampleImages.add(img);
+      if (sampleImages.length >= 5) break;
+    }
+    print('📋 Sample Image values from column metadata: $sampleImages');
+    print('📋 Looking for gridImageId: $gridImageId');
+
+    // Filter for the target gridImageId and build fiducials
     final fiducials = <FiducialPosition>[];
 
     for (final entry in dataMap.entries) {
@@ -148,8 +158,11 @@ class TercenGridService implements GridService {
       if (colMeta == null) continue;
 
       // Check if this is our target grid image
+      // Match with or without file extension
       final imageName = colMeta['Image'] as String?;
-      if (imageName != gridImageId) continue;
+      if (imageName != gridImageId &&
+          imageName != '$gridImageId.tif' &&
+          imageName?.replaceAll('.tif', '') != gridImageId) continue;
 
       final spotRow = (colMeta['spotRow'] as num?)?.toDouble() ?? 0.0;
       final spotCol = (colMeta['spotCol'] as num?)?.toDouble() ?? 0.0;
