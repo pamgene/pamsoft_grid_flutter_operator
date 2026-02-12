@@ -137,15 +137,23 @@ class TercenGridService implements GridService {
     }
     print('✓ Built data map with ${dataMap.length} column entries');
 
-    // 6. Log sample Image values to debug name matching
-    final sampleImages = <String>{};
+    // 6. Debug: collect ALL unique Image and grdImageNameUsed values
+    final allImages = <String>{};
+    final allGrdImages = <String>{};
     for (final meta in colMetadata.values) {
       final img = meta['Image']?.toString();
-      if (img != null) sampleImages.add(img);
-      if (sampleImages.length >= 5) break;
+      if (img != null) allImages.add(img);
+      final grdImg = meta['grdImageNameUsed']?.toString();
+      if (grdImg != null) allGrdImages.add(grdImg);
     }
-    print('📋 Sample Image values from column metadata: $sampleImages');
-    print('📋 Looking for gridImageId: $gridImageId');
+    print('📋 Total unique Image values: ${allImages.length}');
+    print('📋 Total unique grdImageNameUsed values: ${allGrdImages.length}');
+    print('📋 Looking for gridImageId: "$gridImageId"');
+    print('📋 gridImageId found in Image set: ${allImages.contains(gridImageId)}');
+    print('📋 gridImageId found in grdImageNameUsed set: ${allGrdImages.contains(gridImageId)}');
+    // Log first 10 Image values for reference
+    print('📋 Sample Image values: ${allImages.take(10).toList()}');
+    print('📋 All grdImageNameUsed values: $allGrdImages');
 
     // Filter for the target gridImageId and build fiducials
     final fiducials = <FiducialPosition>[];
@@ -157,12 +165,17 @@ class TercenGridService implements GridService {
       final colMeta = colMetadata[ci];
       if (colMeta == null) continue;
 
-      // Check if this is our target grid image
-      // Match with or without file extension
-      final imageName = colMeta['Image'] as String?;
-      if (imageName != gridImageId &&
-          imageName != '$gridImageId.tif' &&
-          imageName?.replaceAll('.tif', '') != gridImageId) continue;
+      // Match against Image field (ds0.Image) or grdImageNameUsed (ds1.grdImageNameUsed)
+      final imageName = colMeta['Image']?.toString() ?? '';
+      final grdImageName = colMeta['grdImageNameUsed']?.toString() ?? '';
+
+      bool matches(String value) {
+        return value == gridImageId ||
+            value == '$gridImageId.tif' ||
+            value.replaceAll('.tif', '') == gridImageId;
+      }
+
+      if (!matches(imageName) && !matches(grdImageName)) continue;
 
       final spotRow = (colMeta['spotRow'] as num?)?.toDouble() ?? 0.0;
       final spotCol = (colMeta['spotCol'] as num?)?.toDouble() ?? 0.0;
