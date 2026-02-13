@@ -30,11 +30,17 @@ dependencies:
 
   # Tercen API client for reading data
   sci_tercen_client:
-    path: ../sci_tercen_client/sci_tercen_client
+    git:
+      url: https://github.com/tercen/sci_tercen_client
+      ref: 1.12.0
+      path: sci_tercen_client
 
   # Tercen operator context (ctx.select/cselect/rselect)
   sci_tercen_context:
-    path: ../sci_tercen_client/sci_tercen_context
+    git:
+      url: https://github.com/tercen/sci_tercen_client
+      ref: 1.12.0
+      path: sci_tercen_context
 
   # ZIP file extraction
   archive: ^3.6.1
