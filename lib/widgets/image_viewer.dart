@@ -46,11 +46,15 @@ class ImageViewer extends StatelessWidget {
                       child: _buildImage(imageBytes, isLoadingImage),
                     ),
                   ),
-                  // Grid overlay - clipped to container bounds
+                  // Grid overlay - clipped to container bounds.
+                  // LayoutBuilder captures the actual inner dimensions (excluding
+                  // the Container's 1px border) so the grid scale matches the image.
                   Positioned.fill(
-                    child: GridCanvas(
-                      containerWidth: AppConstants.imageContainerWidth,
-                      containerHeight: AppConstants.imageContainerHeight,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => GridCanvas(
+                        containerWidth: constraints.maxWidth,
+                        containerHeight: constraints.maxHeight,
+                      ),
                     ),
                   ),
                 ],
