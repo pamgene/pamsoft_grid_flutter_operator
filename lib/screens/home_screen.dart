@@ -30,12 +30,22 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final FocusNode _focusNode = FocusNode();
 
+  /// Stored reference to remove the listener on dispose.
+  ImageSelectionProvider? _imageProvider;
+
+  /// Tracks the last image ID for which a grid was loaded.
+  String? _lastLoadedImageId;
+
   @override
   void initState() {
     super.initState();
     // Load experiment data when screen initializes
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadData();
+      if (mounted) {
+        _imageProvider = context.read<ImageSelectionProvider>();
+        _imageProvider!.addListener(_onImageChanged);
+        _loadData();
+      }
     });
   }
 
@@ -45,15 +55,31 @@ class _HomeScreenState extends State<HomeScreen> {
 
     await imageProvider.loadExperiment();
 
-    // Load grid for first grid image
-    final gridImage = imageProvider.currentGridImage;
-    if (gridImage != null) {
-      await gridProvider.loadGrid(gridImage.id);
+    // Load grid for the first selected image
+    final firstImageId = imageProvider.currentImage?.id;
+    if (firstImageId != null) {
+      _lastLoadedImageId = firstImageId;
+      await gridProvider.loadGrid(firstImageId);
+    }
+  }
+
+  /// Called whenever ImageSelectionProvider notifies listeners.
+  /// Reloads the grid whenever the selected image changes, regardless of
+  /// how the navigation occurred (list tap, nav buttons, dropdown, keyboard).
+  void _onImageChanged() {
+    if (!mounted) return;
+    final imageProvider = context.read<ImageSelectionProvider>();
+    final gridProvider = context.read<GridProvider>();
+    final currentImageId = imageProvider.currentImage?.id;
+    if (currentImageId != null && currentImageId != _lastLoadedImageId) {
+      _lastLoadedImageId = currentImageId;
+      gridProvider.loadGrid(currentImageId);
     }
   }
 
   @override
   void dispose() {
+    _imageProvider?.removeListener(_onImageChanged);
     _focusNode.dispose();
     super.dispose();
   }
@@ -61,29 +87,18 @@ class _HomeScreenState extends State<HomeScreen> {
   void _handleKeyEvent(KeyEvent event) {
     if (event is KeyDownEvent) {
       final imageProvider = context.read<ImageSelectionProvider>();
-      final gridProvider = context.read<GridProvider>();
 
       if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
         if (imageProvider.canGoPreviousGrid) {
           imageProvider.previousGrid();
-          _loadGridForCurrentSelection(gridProvider, imageProvider);
+          // _onImageChanged listener will handle the grid reload
         }
       } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
         if (imageProvider.canGoNextGrid) {
           imageProvider.nextGrid();
-          _loadGridForCurrentSelection(gridProvider, imageProvider);
+          // _onImageChanged listener will handle the grid reload
         }
       }
-    }
-  }
-
-  void _loadGridForCurrentSelection(
-    GridProvider gridProvider,
-    ImageSelectionProvider imageProvider,
-  ) {
-    final gridImage = imageProvider.currentGridImage;
-    if (gridImage != null) {
-      gridProvider.loadGrid(gridImage.id);
     }
   }
 
