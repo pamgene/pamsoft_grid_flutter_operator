@@ -1,27 +1,37 @@
-# Pamsoft Grid Checker
+# PS12 Grid Checker
 
 A Flutter desktop/web application for quality control review of automated fiducial grid fitting on Pamstation experiment TIFF images.
 
-## Overview
+## Usage
 
-Pamsoft Grid Checker is a QC tool designed for reviewing and adjusting the automated grid fitting performed on images from PamGene's Pamstation scientific instrument. The application allows operators to:
+Click on the forward grid button to examine individual grids. In a previous step, gridding has been done by the `Grid_operator` for all cycles per array and exposure times. In each grid, the image with the latest cycle is shown. 
+For `PTK_prewash`, IF needed, use the image button to review individual images within a grid. The names of these images appear under "Images".
 
-- View TIFF images from Pamstation experiments
-- Review the automatically fitted 14x14 peptide grid with reference fiducials
-- Manually adjust individual fiducial positions or the entire grid
-- Navigate between wells and time points within an experiment
+There are 2 options to edit the grids:
+* drag and drop an individual spot
+* click on the side (not on the grid) and drag and drop the whole grid (all spots at once). Rotation is possible by holding the shift.
+
+Editing automatically gets saved. When returning to the replaced grid, the replaced positions are kept.
+
+When all the images have been reviewed, click on the Run button to save the changes.
+
+### Image name explanation:
+Example: `641070616_W1_F1_T100_P94_I493_A30.tif`
+
+```
+{barcode}_W{well (array)}_F{filter}_T{exposure time}_P{cycle}_I{image number}_A{temperature}.tif
+```
+
+## Details
+
+Pamsoft Grid Checker is a QC tool designed for reviewing and adjusting the automated grid fitting performed on images from PamDx's Pamstation scientific instrument. The application allows operators to:
+
+- View TIFF images and the automatically fitted grids 
+- Manually adjust individual fiducial positions or the entire grid (drag-and-drop)
+- Navigate between images of different wells and time points: with buttons or keyboard arrow keys
 - Adjust image brightness and contrast for better visibility
-- Re-run grid fitting algorithms when needed
-
-## Features
-
-- **Grid Overlay Visualization**: Interactive display of fiducial grid overlaid on experiment images
-- **Drag-and-Drop Adjustment**: Move individual fiducials or the entire grid by dragging
-- **Image Controls**: Brightness (-0.5 to 0.5) and contrast (0.2 to 4.0) adjustment
-- **Experiment Navigation**: Browse between grid images and associated time points
-- **Status Tracking**: Visual indicators showing processed vs. modified grid status
-- **Light/Dark Theme**: Toggle between light and dark mode
-- **Keyboard Navigation**: Arrow keys for quick grid navigation
+- New Grid button replaces the current fitted grid with a hardcoded grid with uniform spot size, regular spacing, discarding any algorithm-fitted positions and diameters.
+- use Light/Dark Theme
 
 ## Getting Started
 
