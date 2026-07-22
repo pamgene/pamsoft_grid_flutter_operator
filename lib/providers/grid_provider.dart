@@ -124,22 +124,26 @@ class GridProvider extends ChangeNotifier {
     }
   }
 
-  /// Resets to default grid from control file.
+  /// "New Grid": resets the current grid to a clean, regularly-spaced lattice.
+  ///
+  /// This operator has no grid-finding algorithm, so "New Grid" simply lays out
+  /// a uniform lattice for the user to fine-tune. It MUST preserve the real
+  /// chip's spots — their id / ci / row / col / diameter / reference flag — so
+  /// that on save each spot maps back to the correct column.
+  ///
+  /// The previous implementation pulled a mock default (a hardcoded 14x14
+  /// peptide grid at indices 0..13, plus fixed refs, built on the assumed
+  /// 552x413 image). Those indices/positions did not match the real spot
+  /// layout, so on save the mismatched spots collapsed onto one another —
+  /// producing the overlapping grid spots reported after "New Grid".
   Future<void> resetToDefaultGrid() async {
-    if (_currentGridImageId == null) return;
+    if (_currentGridImageId == null || _currentGridData == null) return;
 
     _isLoading = true;
     notifyListeners();
 
     try {
-      final defaultGrid = await _gridService.loadDefaultGrid();
-      _currentGridData = GridData(
-        gridImageId: _currentGridImageId!,
-        configuration: defaultGrid.configuration,
-        fiducials: defaultGrid.fiducials,
-        globalOffsetX: 0,
-        globalOffsetY: 0,
-      );
+      _currentGridData = _buildRegularDefault(_currentGridData!);
       _markAsModified();
     } catch (e) {
       _error = e.toString();
@@ -147,6 +151,95 @@ class GridProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  /// Builds a clean, regularly-spaced grid from [src], preserving every real
+  /// spot (id/ci/row/col/diameter/reference flag) and only resetting positions.
+  ///
+  /// The peptide spots are laid out on a uniform lattice fitted (least squares)
+  /// to the current grid's actual positions, so the default matches the real
+  /// image — pitch, offset and orientation — instead of a hardcoded
+  /// 552x413 / pitch-17 / 14x14 assumption. Reference fiducials use a separate
+  /// index convention (outlier row/col values) so they are kept at their current
+  /// positions rather than forced onto the peptide lattice, which would distort
+  /// them. Preserving each spot's row/col/ci also guarantees the saved grid maps
+  /// back to the correct columns (no collapsed/overlapping spots).
+  GridData _buildRegularDefault(GridData src) {
+    final fids = src.fiducials;
+    if (fids.isEmpty) return src;
+
+    double curX(f) => f.baseX + f.individualOffsetX + src.globalOffsetX;
+    double curY(f) => f.baseY + f.individualOffsetY + src.globalOffsetY;
+
+    final peptides = fids.where((f) => !f.isReference).toList();
+    final basis = peptides.length >= 4 ? peptides : fids;
+
+    double mean(List<double> v) => v.reduce((a, b) => a + b) / v.length;
+    double slope(List<double> idx, List<double> pos) {
+      final mi = mean(idx), mp = mean(pos);
+      var num = 0.0, den = 0.0;
+      for (var i = 0; i < idx.length; i++) {
+        num += (idx[i] - mi) * (pos[i] - mp);
+        den += (idx[i] - mi) * (idx[i] - mi);
+      }
+      return den == 0 ? src.configuration.spotPitch : num / den;
+    }
+
+    double absCorr(List<double> a, List<double> b) {
+      final ma = mean(a), mb = mean(b);
+      var num = 0.0, da = 0.0, db = 0.0;
+      for (var i = 0; i < a.length; i++) {
+        num += (a[i] - ma) * (b[i] - mb);
+        da += (a[i] - ma) * (a[i] - ma);
+        db += (b[i] - mb) * (b[i] - mb);
+      }
+      final d = math.sqrt(da * db);
+      return d == 0 ? 0 : (num / d).abs();
+    }
+
+    final rowsD = [for (final f in basis) f.row.toDouble()];
+    final colsD = [for (final f in basis) f.col.toDouble()];
+    final xsD = [for (final f in basis) curX(f)];
+    final ysD = [for (final f in basis) curY(f)];
+
+    // This operator swaps axes on read (baseX <- gridY), so X follows the row
+    // index and Y the col index; detect it so the layout stays correct even if
+    // that convention changes.
+    final xFollowsRow = absCorr(xsD, rowsD) >= absCorr(xsD, colsD);
+    final xIdx = xFollowsRow ? rowsD : colsD;
+    final yIdx = xFollowsRow ? colsD : rowsD;
+    final bx = slope(xIdx, xsD), by = slope(yIdx, ysD);
+    final miX = mean(xIdx), miY = mean(yIdx), mX = mean(xsD), mY = mean(ysD);
+    double ix(f) => (xFollowsRow ? f.row : f.col).toDouble();
+    double iy(f) => (xFollowsRow ? f.col : f.row).toDouble();
+
+    final newFids = [
+      for (final f in fids)
+        f.isReference
+            ? f.copyWith(
+                baseX: curX(f),
+                baseY: curY(f),
+                individualOffsetX: 0,
+                individualOffsetY: 0,
+                isManual: false,
+              )
+            : f.copyWith(
+                baseX: mX + bx * (ix(f) - miX),
+                baseY: mY + by * (iy(f) - miY),
+                individualOffsetX: 0,
+                individualOffsetY: 0,
+                isManual: false,
+              )
+    ];
+
+    return GridData(
+      gridImageId: src.gridImageId,
+      configuration: src.configuration,
+      fiducials: newFids,
+      globalOffsetX: 0,
+      globalOffsetY: 0,
+      rotation: 0,
+    );
   }
 
   /// Saves all grid adjustments to Tercen.
