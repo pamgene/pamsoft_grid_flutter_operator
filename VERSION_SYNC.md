@@ -35,6 +35,9 @@ flutter build web
 > Plain `flutter build web` produces `dart2js` + `canvaskit`, which is what every working
 > deployed build of this operator has used (verify with `"compileTarget":"dart2js"` in
 > `build/web/flutter_bootstrap.js`).
+>
+> Re-enable `--wasm` only after verifying the skwasm renderer end-to-end against the
+> operator's image pipeline.
 
 ### 3. Commit changes
 ```bash
@@ -69,4 +72,17 @@ After pushing, verify the version appears correctly:
 
 ## Current Version
 
-**0.0.1** - Initial release with grid rotation feature
+**0.0.8** - Synced from tercen/pamsoft_grid_flutter_operator: operator
+settings/properties (Spot Pitch, Spot Size, Default Cycle, plus workflow
+pass-through settings), client-feedback fixes (image name, cycle default,
+speed), warnings on inert properties, and faster grid-to-grid navigation.
+
+### History
+
+| Version | Notes |
+|---------|-------|
+| 0.0.5 | Inert-setting warnings in README and `operator.json`; cross-grid image prefetch; `ciByImage` index for grid loads |
+| 0.0.4 | Client feedback: header names the displayed image, `Default Cycle` property, nine operator properties restored, image display ~146ms → ~8ms, Evolve2 dimensions |
+| 0.0.3 | `table.limit` paging for large datasets |
+| 0.0.2 | Never tagged |
+| 0.0.1 | Initial release with grid rotation feature |
