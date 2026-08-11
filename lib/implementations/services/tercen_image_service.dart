@@ -251,7 +251,10 @@ class TercenImageService implements ImageService {
         for (final name in others) {
           final meta = metadataById[name];
           if (meta != null) {
-            sortedMetadata.add(meta);
+            // Clear the grid flag: parseFilename marks every T100-timepoint
+            // image as a grid image, but the real grid is the grouping key
+            // (grdImageNameUsed). Only that image keeps isGridImage=true.
+            sortedMetadata.add(meta.copyWith(isGridImage: false));
           }
         }
 
