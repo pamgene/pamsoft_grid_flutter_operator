@@ -7,6 +7,8 @@ import 'package:pamsoft_grid_flutter_operator/models/operator_properties.dart';
 import 'package:pamsoft_grid_flutter_operator/services/grid_service.dart';
 import 'package:pamsoft_grid_flutter_operator/services/image_service.dart';
 import 'package:pamsoft_grid_flutter_operator/services/properties_service.dart';
+import 'package:pamsoft_grid_flutter_operator/utils/block_slice.dart';
+import 'package:pamsoft_grid_flutter_operator/utils/unload_guard.dart';
 import 'dart:math' as math;
 
 /// Provider for managing grid state and interactions.
@@ -17,8 +19,23 @@ class GridProvider extends ChangeNotifier {
   GridData? _currentGridData;
   String? _currentGridImageId;
   bool _isLoading = false;
-  bool _isProcessing = false;
+  SaveState _saveState = SaveState.idle;
   String? _error;
+
+  GridProvider() {
+    // The service reports the background crosstab load and the save steps;
+    // re-emit them so the widgets that show progress rebuild.
+    _gridService.loadProgress.addListener(notifyListeners);
+    _gridService.saveProgress.addListener(notifyListeners);
+  }
+
+  @override
+  void dispose() {
+    _gridService.loadProgress.removeListener(notifyListeners);
+    _gridService.saveProgress.removeListener(notifyListeners);
+    UnloadGuard.set(false);
+    super.dispose();
+  }
 
   OperatorProperties? _properties;
 
@@ -33,8 +50,30 @@ class GridProvider extends ChangeNotifier {
   GridData? get currentGridData => _currentGridData;
   String? get currentGridImageId => _currentGridImageId;
   bool get isLoading => _isLoading;
-  bool get isProcessing => _isProcessing;
   String? get error => _error;
+
+  /// Where the finishing action stands. Never returns to [SaveState.idle]
+  /// from [SaveState.done]: a completed step stays completed on screen.
+  SaveState get saveState => _saveState;
+  bool get isSaving => _saveState == SaveState.saving;
+  bool get isDone => _saveState == SaveState.done;
+
+  /// Kept for callers of the pre-0.0.9 name.
+  bool get isProcessing => isSaving;
+
+  /// Progress of the one-off crosstab load running behind the first grid,
+  /// or null before it starts. Complete once every cell is in memory.
+  LoadProgress? get loadProgress => _gridService.loadProgress.value;
+  bool get isLoadingAllGrids {
+    final p = loadProgress;
+    return p != null && !p.isComplete;
+  }
+
+  /// Progress of the save while it runs.
+  LoadProgress? get saveProgress => _gridService.saveProgress.value;
+
+  /// How many grids the user has changed in this session.
+  int get modifiedCount => _gridService.modifiedCount;
 
   /// Gets the current grid status.
   GridStatus get currentStatus =>
@@ -299,13 +338,19 @@ class GridProvider extends ChangeNotifier {
     );
   }
 
-  /// Saves all grid adjustments to Tercen.
+  /// "Save and finish": saves every grid, modified or not, as the step's
+  /// result and waits for the platform to mark the step complete.
   ///
-  /// Collects all grid data (modified and unmodified) across all grid images,
-  /// builds the output table, and saves via ctx.saveTable().
-  Future<void> runProcessing() async {
-    _isProcessing = true;
+  /// Collects all grid data across all grid images, builds the output table,
+  /// saves via ctx.saveTable(), then polls the task until it is Done so the
+  /// button can truthfully say "Step complete" (the upload finishing is not
+  /// the same thing as the step finishing: a worker still has to register
+  /// the result). While the save runs the tab-close guard is armed.
+  Future<void> finishAndSave() async {
+    if (_saveState == SaveState.saving || _saveState == SaveState.done) return;
+    _saveState = SaveState.saving;
     _error = null;
+    UnloadGuard.set(true);
     notifyListeners();
 
     try {
@@ -320,18 +365,31 @@ class GridProvider extends ChangeNotifier {
       final gridImages = await imageService.getGridImages();
       final allGridImageIds = gridImages.map((g) => g.id).toList();
 
-      print('📤 Saving all grids to Tercen (${allGridImageIds.length} grid images)');
+      print('📤 Saving all grids to Tercen (${allGridImageIds.length} grid images, '
+          '${modifiedCount} modified)');
 
-      // Save all grids to Tercen
       await _gridService.saveAllGrids(allGridImageIds);
-
       print('✓ All grids saved to Tercen');
+
+      final completed = await _gridService.waitForTaskCompletion(
+          timeout: const Duration(minutes: 3));
+      if (completed) {
+        _saveState = SaveState.done;
+      } else {
+        _saveState = SaveState.failed;
+        _error = 'The grids were uploaded but the step did not complete. '
+            'Check the step in the workflow, then run it again if needed.';
+      }
     } catch (e) {
+      _saveState = SaveState.failed;
       _error = e.toString();
       print('✗ Error saving to Tercen: $e');
     } finally {
-      _isProcessing = false;
+      UnloadGuard.set(false);
       notifyListeners();
     }
   }
+
+  /// Pre-0.0.9 name of [finishAndSave].
+  Future<void> runProcessing() => finishAndSave();
 }

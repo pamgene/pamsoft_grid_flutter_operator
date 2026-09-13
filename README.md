@@ -23,6 +23,28 @@ Pamsoft Grid Checker is a QC tool designed for reviewing and adjusting the autom
 - **Light/Dark Theme**: Toggle between light and dark mode
 - **Keyboard Navigation**: Arrow keys for quick grid navigation
 
+## Loading and saving (0.0.9)
+
+The grid data lives in the step's crosstab: one column per spot per image, one
+row per variable. On a large run (4.6 M cells) pulling all of it before the
+first grid took tens of seconds while the image was already on screen.
+
+- **First grid first.** The current grid image's cells are read as one
+  contiguous block of the crosstab (the engine stores crosstabs in Morton
+  order, so with at most 16 row variables an image's columns are one run of
+  16-column blocks — see `lib/utils/block_slice.dart`). The block is verified
+  cell by cell before it is trusted; if the layout is not what is predicted the
+  app waits for the full load instead. Under a megabyte, about a second.
+- **Everything else streams in behind it**, 250 k cells per request, two
+  requests in flight, into flat typed arrays. A bar at the bottom of the image
+  shows how far it is. Saving needs all of it (the output is one row per spot
+  for every image); browsing does not.
+- **Save and finish** replaces the old *Run* button. It saves every grid,
+  modified or not, then waits for the platform to mark the step complete and
+  shows *Step complete*. It never reverts to its initial label after a
+  successful save, and the browser warns before the tab is closed while the
+  upload is in flight. The line under it shows how many grids were modified.
+
 ## Operator Settings
 
 This operator declares ten properties. **Only three of them affect what the

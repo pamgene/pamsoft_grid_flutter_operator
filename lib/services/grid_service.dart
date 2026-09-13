@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:pamsoft_grid_flutter_operator/models/grid_data.dart';
 import 'package:pamsoft_grid_flutter_operator/models/enums.dart';
+import 'package:pamsoft_grid_flutter_operator/utils/block_slice.dart';
 
 /// Abstract interface for grid service.
 ///
@@ -35,9 +37,24 @@ abstract class GridService {
   /// Updates the status for a grid image.
   void setGridStatus(String gridImageId, GridStatus status);
 
+  /// Number of grid images the user has modified in this session.
+  int get modifiedCount;
+
   /// Saves all grid data to Tercen as an operator result.
   ///
   /// [allGridImageIds] - All grid image IDs in the experiment.
   /// Loads any unvisited grids, builds the output table, and saves via ctx.saveTable().
   Future<void> saveAllGrids(List<String> allGridImageIds);
+
+  /// Progress of the one-off load of the whole crosstab, for a determinate
+  /// bar. `null` before it starts; [LoadProgress.isComplete] once it is done.
+  ValueListenable<LoadProgress?> get loadProgress;
+
+  /// Progress of [saveAllGrids] while it runs, `null` otherwise.
+  ValueListenable<LoadProgress?> get saveProgress;
+
+  /// After [saveAllGrids], waits for the platform to mark the step's task
+  /// complete. Returns true when the task reached Done, false when it failed
+  /// or [timeout] elapsed first. Implementations without a task return true.
+  Future<bool> waitForTaskCompletion({Duration timeout});
 }

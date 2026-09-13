@@ -1,4 +1,5 @@
 import 'package:pamsoft_grid_flutter_operator/models/image_metadata.dart';
+import 'package:pamsoft_grid_flutter_operator/utils/block_slice.dart';
 
 /// Contains all data for an experiment session.
 class ExperimentData {
@@ -11,10 +12,17 @@ class ExperimentData {
   /// Map of grid image ID to its associated time point images.
   final Map<String, List<ImageMetadata>> imagesByGrid;
 
+  /// Image name -> the run of crosstab column indices (`.ci`) carrying that
+  /// image's spots. The column table is sorted by its factors with the image
+  /// ahead of the spot factors, so each image is one contiguous range. Filled
+  /// from the same `cselect` that builds the grouping; empty in mock mode.
+  final Map<String, CiRange> ciRangeByImage;
+
   const ExperimentData({
     required this.experimentId,
     required this.gridImages,
     required this.imagesByGrid,
+    this.ciRangeByImage = const {},
   });
 
   /// Gets the total number of images across all grids.

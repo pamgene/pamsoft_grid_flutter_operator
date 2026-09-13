@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:pamsoft_grid_flutter_operator/providers/settings_provider.dart';
 import 'package:pamsoft_grid_flutter_operator/providers/image_selection_provider.dart';
+import 'package:pamsoft_grid_flutter_operator/providers/grid_provider.dart';
 import 'package:pamsoft_grid_flutter_operator/widgets/grid_canvas.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/image_filters.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/constants.dart';
@@ -65,6 +66,15 @@ class ImageViewer extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // Grid data status: the overlay for the current grid is
+                  // being fetched, or the whole crosstab is still streaming
+                  // in behind it (needed to save and to browse freely).
+                  const Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    child: _GridLoadBanner(),
+                  ),
                 ],
               ),
             ),
@@ -121,5 +131,61 @@ class ImageViewer extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Tells the user the app is still working when the image is on screen but
+/// the grid is not, or when the background load of every grid is running.
+/// Determinate where the total is known, so a large dataset reads as
+/// progress rather than as a hang.
+class _GridLoadBanner extends StatelessWidget {
+  const _GridLoadBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<GridProvider>(
+      builder: (context, gridProvider, _) {
+        final waitingForGrid =
+            gridProvider.isLoading && gridProvider.currentGridData == null;
+        final progress = gridProvider.loadProgress;
+        final loadingAll = progress != null && !progress.isComplete;
+        if (!waitingForGrid && !loadingAll) return const SizedBox.shrink();
+
+        final String text;
+        final double? value;
+        if (waitingForGrid) {
+          text = 'Loading grid…';
+          value = null;
+        } else {
+          text = '${progress!.phase}: ${_fmt(progress.done)} of ${_fmt(progress.total)} cells';
+          value = progress.fraction;
+        }
+
+        return Container(
+          color: Colors.black.withValues(alpha: 0.6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(text, style: const TextStyle(color: Colors.white70, fontSize: 11)),
+              const SizedBox(height: 4),
+              LinearProgressIndicator(
+                value: value,
+                minHeight: 3,
+                backgroundColor: Colors.white24,
+                color: Colors.lightGreenAccent,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  static String _fmt(int n) {
+    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)} M';
+    if (n >= 1000) return '${(n / 1000).toStringAsFixed(0)} k';
+    return '$n';
   }
 }
