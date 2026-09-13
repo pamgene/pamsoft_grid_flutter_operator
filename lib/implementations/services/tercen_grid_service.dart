@@ -458,7 +458,7 @@ class TercenGridService implements GridService {
 
     try {
       print('📤 saveAllGrids: loading the whole crosstab if not there yet...');
-      await step('Loading grid data', 0, 3);
+      await step('Preparing grids', 0, 3);
 
       // 1. Every cell: the output is one row per spot for every image.
       final data = await _getTercenData();
@@ -472,7 +472,7 @@ class TercenGridService implements GridService {
         }
       }
 
-      await step('Building output', 1, 3);
+      await step('Building results', 1, 3);
 
       // 3. Build position lookup for modified grids:
       //    grdImageNameUsed -> { "row_col" -> modified fiducial data }
@@ -644,12 +644,12 @@ class TercenGridService implements GridService {
       print('  Table built: ${table.nRows} rows, ${table.columns.length} columns');
 
       // 8. Save to Tercen
-      await step('Saving to Tercen', 2, 3);
+      await step('Uploading results, this can take a minute', 2, 3);
       print('📤 Saving table to Tercen...');
 
       await ctx.saveTable(table);
 
-      await step('Saved', 3, 3);
+      await step('Uploaded, waiting for the step to complete', 3, 3);
       print('✓ Save complete!');
     } finally {
       _saveProgress.value = null;
