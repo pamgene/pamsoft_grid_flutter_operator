@@ -45,6 +45,19 @@ first grid took tens of seconds while the image was already on screen.
   successful save, and the browser warns before the tab is closed while the
   upload is in flight. The line under it shows how many grids were modified.
 
+## Review progress (0.0.10)
+
+The header names the state of the grid on screen — **Not viewed** (blue
+outline), **Viewed** (green) or **Modified** (amber) — and a line under it
+reads e.g. `Grid 12 of 192 · 47 viewed · 3 modified · 145 not yet opened`.
+"Viewed" means the grid image was opened in this session; there is no
+per-grid approval. Until 0.0.10 an unopened grid was painted green.
+
+The same counts appear under **Save and finish**. Finishing while grids
+remain unopened asks first ("145 of 192 grids have not been opened. Their
+automatic grids will be saved as they are.") with *Keep checking* as the
+safe choice. Counts live in memory for the session.
+
 ## Operator Settings
 
 This operator declares ten properties. **Only three of them affect what the

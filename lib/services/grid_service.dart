@@ -31,7 +31,8 @@ abstract class GridService {
 
   /// Gets the current status for a grid image.
   ///
-  /// Returns [GridStatus.processed] (green) or [GridStatus.modified] (yellow).
+  /// [GridStatus.unviewed] until the grid has been loaded once, then
+  /// [GridStatus.processed] (green) or [GridStatus.modified] (amber).
   GridStatus getGridStatus(String gridImageId);
 
   /// Updates the status for a grid image.
@@ -39,6 +40,9 @@ abstract class GridService {
 
   /// Number of grid images the user has modified in this session.
   int get modifiedCount;
+
+  /// Number of grid images opened in this session, modified or not.
+  int get viewedCount;
 
   /// Saves all grid data to Tercen as an operator result.
   ///

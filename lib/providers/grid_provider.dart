@@ -8,6 +8,7 @@ import 'package:pamsoft_grid_flutter_operator/services/grid_service.dart';
 import 'package:pamsoft_grid_flutter_operator/services/image_service.dart';
 import 'package:pamsoft_grid_flutter_operator/services/properties_service.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/block_slice.dart';
+import 'package:pamsoft_grid_flutter_operator/utils/review_progress.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/unload_guard.dart';
 import 'dart:math' as math;
 
@@ -75,11 +76,22 @@ class GridProvider extends ChangeNotifier {
   /// How many grids the user has changed in this session.
   int get modifiedCount => _gridService.modifiedCount;
 
+  /// How many grids were opened in this session, changed or not.
+  int get viewedCount => _gridService.viewedCount;
+
+  /// Review progress against [totalGrids] grid images (the image
+  /// selection provider knows the total; this provider knows the states).
+  ReviewProgress progress(int totalGrids) => ReviewProgress(
+        total: totalGrids,
+        viewed: viewedCount,
+        modified: modifiedCount,
+      );
+
   /// Gets the current grid status.
   GridStatus get currentStatus =>
       _currentGridImageId != null
           ? _gridService.getGridStatus(_currentGridImageId!)
-          : GridStatus.processed;
+          : GridStatus.unviewed;
 
   /// Loads grid data for a specific grid image.
   Future<void> loadGrid(String gridImageId) async {

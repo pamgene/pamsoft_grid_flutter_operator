@@ -224,7 +224,7 @@ class MockGridService implements GridService {
 
   @override
   GridStatus getGridStatus(String gridImageId) {
-    return _statusCache[gridImageId] ?? GridStatus.processed;
+    return _statusCache[gridImageId] ?? GridStatus.unviewed;
   }
 
   @override
@@ -241,6 +241,10 @@ class MockGridService implements GridService {
   @override
   int get modifiedCount =>
       _statusCache.values.where((s) => s == GridStatus.modified).length;
+
+  @override
+  int get viewedCount =>
+      _statusCache.values.where((s) => s != GridStatus.unviewed).length;
 
   final ValueNotifier<LoadProgress?> _loadProgress = ValueNotifier(null);
   final ValueNotifier<LoadProgress?> _saveProgress = ValueNotifier(null);

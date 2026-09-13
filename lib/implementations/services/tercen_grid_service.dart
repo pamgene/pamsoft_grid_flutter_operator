@@ -75,6 +75,10 @@ class TercenGridService implements GridService {
   int get modifiedCount =>
       _statusCache.values.where((s) => s == GridStatus.modified).length;
 
+  @override
+  int get viewedCount =>
+      _statusCache.values.where((s) => s != GridStatus.unviewed).length;
+
   /// Get or create the OperatorContext.
   Future<AbstractOperatorContext> _getContext() async {
     if (_ctx != null) return _ctx!;
@@ -440,7 +444,7 @@ class TercenGridService implements GridService {
 
   @override
   GridStatus getGridStatus(String gridImageId) {
-    return _statusCache[gridImageId] ?? GridStatus.processed;
+    return _statusCache[gridImageId] ?? GridStatus.unviewed;
   }
 
   @override
