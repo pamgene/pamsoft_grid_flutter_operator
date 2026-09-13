@@ -58,6 +58,11 @@ remain unopened asks first ("145 of 192 grids have not been opened. Their
 automatic grids will be saved as they are.") with *Keep checking* as the
 safe choice. Counts live in memory for the session.
 
+Since 0.0.11 the result table is uploaded once, not twice: each column used
+to carry its data in both `values` and the legacy `cValues` slot, and the
+client serialises both. The server reads `values` only. On a 509 k-row
+result this halves the upload (148 MB to 73 MB).
+
 ## Operator Settings
 
 This operator declares ten properties. **Only three of them affect what the

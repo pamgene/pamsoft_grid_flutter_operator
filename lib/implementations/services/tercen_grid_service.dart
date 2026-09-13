@@ -592,6 +592,12 @@ class TercenGridService implements GridService {
       //    CStringList for correct binary serialization (LIST_INT32_TYPE,
       //    LIST_FLOAT64_TYPE, LIST_STRING_TYPE). Regular Dart lists serialize
       //    as generic LIST_TYPE which the server rejects.
+      //
+      //    Only `values` is filled. `cValues` is a second, older slot for the
+      //    same data; Column.toJson serialises both when both are set, and
+      //    the server reads `values` alone (Column.json / addTypedColumn2).
+      //    Filling cValues as well doubled the upload: 148 MB instead of
+      //    73 MB for 509 k rows, 49 s at a 3 MB/s uplink.
       final table = Table();
       table.nRows = nOut;
 
@@ -601,9 +607,6 @@ class TercenGridService implements GridService {
       ciCol.type = 'int32';
       ciCol.nRows = nOut;
       ciCol.values = outCi;
-      final ciVals = I32Values();
-      ciVals.values.addAll(outCi);
-      ciCol.cValues = ciVals;
       table.columns.add(ciCol);
 
       // Double columns: column.values = Float64List for correct TSON encoding
@@ -613,9 +616,6 @@ class TercenGridService implements GridService {
         col.type = 'double';
         col.nRows = nOut;
         col.values = values;
-        final f64 = F64Values();
-        f64.values.addAll(values);
-        col.cValues = f64;
         table.columns.add(col);
       }
 
@@ -636,9 +636,6 @@ class TercenGridService implements GridService {
         col.type = 'string';
         col.nRows = nOut;
         col.values = CStringList.fromList(values);
-        final str = StrValues();
-        str.values.addAll(values);
-        col.cValues = str;
         table.columns.add(col);
       }
 
