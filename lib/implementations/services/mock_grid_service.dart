@@ -1,10 +1,12 @@
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:pamsoft_grid_flutter_operator/models/grid_data.dart';
 import 'package:pamsoft_grid_flutter_operator/models/grid_configuration.dart';
 import 'package:pamsoft_grid_flutter_operator/models/fiducial_position.dart';
 import 'package:pamsoft_grid_flutter_operator/models/enums.dart';
 import 'package:pamsoft_grid_flutter_operator/services/grid_service.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/constants.dart';
+import 'package:pamsoft_grid_flutter_operator/utils/block_slice.dart';
 
 /// Mock implementation of GridService for development and testing.
 class MockGridService implements GridService {
@@ -235,4 +237,22 @@ class MockGridService implements GridService {
     // Mock: no-op (CSV export handled separately)
     print('MockGridService.saveAllGrids: no-op');
   }
+
+  @override
+  int get modifiedCount =>
+      _statusCache.values.where((s) => s == GridStatus.modified).length;
+
+  final ValueNotifier<LoadProgress?> _loadProgress = ValueNotifier(null);
+  final ValueNotifier<LoadProgress?> _saveProgress = ValueNotifier(null);
+
+  @override
+  ValueListenable<LoadProgress?> get loadProgress => _loadProgress;
+
+  @override
+  ValueListenable<LoadProgress?> get saveProgress => _saveProgress;
+
+  @override
+  Future<bool> waitForTaskCompletion(
+          {Duration timeout = const Duration(minutes: 2)}) async =>
+      true;
 }

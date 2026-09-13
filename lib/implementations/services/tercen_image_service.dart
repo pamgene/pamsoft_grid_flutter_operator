@@ -5,6 +5,7 @@ import 'package:pamsoft_grid_flutter_operator/services/image_service.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/tercen_url_parser.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/tiff_converter.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/document_id_resolver.dart';
+import 'package:pamsoft_grid_flutter_operator/utils/block_slice.dart';
 import 'package:sci_tercen_client/sci_client_service_factory.dart';
 import 'package:sci_tercen_context/src/context/operator_context.dart';
 
@@ -94,6 +95,7 @@ class TercenImageService implements ImageService {
       print('No taskId - falling back to ZIP-only grouping');
       return {};
     }
+    _ciRangeByImage.clear();
 
     try {
       final ctx = await OperatorContext.create(
@@ -127,8 +129,13 @@ class TercenImageService implements ImageService {
         if (col.name == imageCol) imageValues = col.values as List;
       }
 
-      // Build grouping: grdImageNameUsed -> unique Image values
+      // Build grouping: grdImageNameUsed -> unique Image values.
+      // Row i of the column table IS column index i of the crosstab, so the
+      // same pass records where each image's run of columns starts and ends
+      // (the grid service reads one image's cells from that range).
       final grouping = <String, List<String>>{};
+      String? runImage;
+      var runStart = 0;
       for (int i = 0; i < grdImageValues.length; i++) {
         final gridName = grdImageValues[i].toString();
         final imageName = imageValues[i].toString();
@@ -136,7 +143,13 @@ class TercenImageService implements ImageService {
         if (!grouping[gridName]!.contains(imageName)) {
           grouping[gridName]!.add(imageName);
         }
+        if (imageName != runImage) {
+          if (runImage != null) _recordCiRun(runImage, runStart, i);
+          runImage = imageName;
+          runStart = i;
+        }
       }
+      if (runImage != null) _recordCiRun(runImage, runStart, grdImageValues.length);
 
       print('Tercen grouping: ${grouping.length} grid images');
       for (final entry in grouping.entries) {
@@ -202,6 +215,24 @@ class TercenImageService implements ImageService {
       return int.tryParse(cycle.substring(1)) ?? 0;
     }
     return 0;
+  }
+
+  /// Image name -> its contiguous run of column indices, see
+  /// [ExperimentData.ciRangeByImage]. An image whose columns are NOT
+  /// contiguous is dropped from the map, so the grid service falls back to
+  /// the full load for it instead of reading the wrong cells.
+  final Map<String, CiRange> _ciRangeByImage = {};
+  final Set<String> _splitImages = {};
+
+  void _recordCiRun(String image, int start, int end) {
+    if (_splitImages.contains(image)) return;
+    if (_ciRangeByImage.containsKey(image)) {
+      print('Image $image has non-contiguous columns; no sliced load for it');
+      _ciRangeByImage.remove(image);
+      _splitImages.add(image);
+      return;
+    }
+    _ciRangeByImage[image] = CiRange(start, end - start);
   }
 
   ExperimentData _buildExperimentData(
@@ -282,6 +313,7 @@ class TercenImageService implements ImageService {
       experimentId: experimentId,
       gridImages: gridImages,
       imagesByGrid: imagesByGrid,
+      ciRangeByImage: Map.unmodifiable(_ciRangeByImage),
     );
   }
 

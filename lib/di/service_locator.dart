@@ -47,7 +47,16 @@ void setupServiceLocator({bool useMocks = true}) {
       TercenImageService(factory, urlParser, mockImageService),
     );
     locator.registerSingleton<GridService>(
-      TercenGridService(factory, urlParser, mockGridService),
+      TercenGridService(
+        factory,
+        urlParser,
+        mockGridService,
+        // The image service learns where each image's columns sit while it
+        // groups images; the grid service reads one image's cells from that.
+        ciRangeFor: (image) async =>
+            (await locator<ImageService>().loadExperimentData())
+                .ciRangeByImage[image],
+      ),
     );
     locator.registerSingleton<StorageService>(MockStorageService());
     locator.registerSingleton<PropertiesService>(
