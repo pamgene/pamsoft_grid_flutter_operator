@@ -10,8 +10,8 @@ import 'package:pamsoft_grid_flutter_operator/utils/block_slice.dart';
 /// | state  | label               | why                                        |
 /// |--------|---------------------|--------------------------------------------|
 /// | ready  | Save and finish     | saves every grid and completes the step    |
-/// | saving | Saving grids, n/N   | disabled; the tab-close guard is armed     |
-/// | done   | Step complete       | disabled; the user can close the window    |
+/// | saving | Saving…             | grey, inert; phase in the line below       |
+/// | done   | Step complete       | grey chip, not a button; window can close  |
 ///
 /// It used to read "Run", show a spinner, and then read "Run" again after a
 /// successful save — which users read as "nothing happened".
@@ -89,7 +89,7 @@ class ActionButtons extends StatelessWidget {
       case SaveState.done:
         return 'Grids saved. You can close this window.';
       case SaveState.saving:
-        return p.saveProgress?.phase ?? 'Saving grids…';
+        return p.saveProgress?.phase ?? 'Saving…';
       case SaveState.failed:
         return 'Save failed. Fix the problem and try again.';
       case SaveState.idle:
@@ -107,44 +107,36 @@ class _FinishButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = gridProvider.saveState;
-    final style = ElevatedButton.styleFrom(
-      backgroundColor: Colors.green,
-      foregroundColor: Colors.white,
-      disabledBackgroundColor:
-          state == SaveState.done ? Colors.green.shade700 : Colors.grey.shade400,
-      disabledForegroundColor: Colors.white,
-      padding: EdgeInsets.zero,
-      textStyle: const TextStyle(fontSize: 12),
-    );
+    final scheme = Theme.of(context).colorScheme;
 
     switch (state) {
       case SaveState.saving:
-        final p = gridProvider.saveProgress;
-        final label = p != null && p.total > 0
-            ? 'Saving grids, ${p.done} of ${p.total}'
-            : 'Saving grids…';
-        return ElevatedButton(
-          onPressed: null,
-          style: style,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-              ),
-              const SizedBox(width: 8),
-              Text(label),
-            ],
+        // Grey and inert. No count on the button: "2 of 3" read as grids.
+        // The phase is spelled out in the status line underneath.
+        return _InertChip(
+          background: Colors.grey.shade400,
+          foreground: Colors.white,
+          leading: const SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.white,
+            ),
           ),
+          label: 'Saving…',
         );
       case SaveState.done:
-        return ElevatedButton.icon(
-          onPressed: null,
-          style: style,
-          icon: const Icon(Icons.check, size: 16),
-          label: const Text('Step complete'),
+        // Not a button any more: a neutral chip so nothing invites a click.
+        return _InertChip(
+          background: scheme.surfaceContainerHighest,
+          foreground: scheme.onSurfaceVariant,
+          leading: Icon(
+            Icons.check_circle,
+            size: 16,
+            color: Colors.green.shade700,
+          ),
+          label: 'Step complete',
         );
       case SaveState.idle:
       case SaveState.failed:
@@ -154,10 +146,52 @@ class _FinishButton extends StatelessWidget {
               : 'Saves all grids and completes the step',
           child: ElevatedButton(
             onPressed: () => gridProvider.finishAndSave(),
-            style: style,
-            child: Text(state == SaveState.failed ? 'Retry save and finish' : 'Save and finish'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.zero,
+              textStyle: const TextStyle(fontSize: 12),
+            ),
+            child: Text(
+              state == SaveState.failed
+                  ? 'Retry save and finish'
+                  : 'Save and finish',
+            ),
           ),
         );
     }
+  }
+}
+
+/// A button-sized, non-interactive status element.
+class _InertChip extends StatelessWidget {
+  final Color background;
+  final Color foreground;
+  final Widget leading;
+  final String label;
+  const _InertChip({
+    required this.background,
+    required this.foreground,
+    required this.leading,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      alignment: Alignment.center,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          leading,
+          const SizedBox(width: 8),
+          Text(label, style: TextStyle(fontSize: 12, color: foreground)),
+        ],
+      ),
+    );
   }
 }
