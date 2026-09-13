@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:pamsoft_grid_flutter_operator/providers/grid_provider.dart';
+import 'package:pamsoft_grid_flutter_operator/providers/image_selection_provider.dart';
+import 'package:pamsoft_grid_flutter_operator/utils/review_progress.dart';
 import 'package:pamsoft_grid_flutter_operator/utils/block_slice.dart';
 
 /// New Grid, and the finishing action.
@@ -20,10 +22,10 @@ class ActionButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<GridProvider>(
-      builder: (context, gridProvider, child) {
+    return Consumer2<GridProvider, ImageSelectionProvider>(
+      builder: (context, gridProvider, imageProvider, child) {
         final busy = gridProvider.isSaving || gridProvider.isDone;
-        final modified = gridProvider.modifiedCount;
+        final progress = gridProvider.progress(imageProvider.gridImageCount);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -51,7 +53,10 @@ class ActionButtons extends StatelessWidget {
                   flex: 2,
                   child: SizedBox(
                     height: 32,
-                    child: _FinishButton(gridProvider: gridProvider),
+                    child: _FinishButton(
+                      gridProvider: gridProvider,
+                      progress: progress,
+                    ),
                   ),
                 ),
               ],
@@ -59,7 +64,7 @@ class ActionButtons extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
-                _statusLine(gridProvider, modified),
+                _statusLine(gridProvider, progress),
                 style: TextStyle(
                   fontSize: 11,
                   color: gridProvider.isDone
@@ -84,7 +89,7 @@ class ActionButtons extends StatelessWidget {
     );
   }
 
-  static String _statusLine(GridProvider p, int modified) {
+  static String _statusLine(GridProvider p, ReviewProgress progress) {
     switch (p.saveState) {
       case SaveState.done:
         return 'Grids saved. You can close this window.';
@@ -93,16 +98,41 @@ class ActionButtons extends StatelessWidget {
       case SaveState.failed:
         return 'Save failed. Fix the problem and try again.';
       case SaveState.idle:
-        return modified == 0
-            ? 'No grid modified. Finishing accepts the automatic grids as they are.'
-            : '$modified grid${modified == 1 ? '' : 's'} modified';
+        return progress.readyLine();
     }
   }
 }
 
 class _FinishButton extends StatelessWidget {
   final GridProvider gridProvider;
-  const _FinishButton({required this.gridProvider});
+  final ReviewProgress progress;
+  const _FinishButton({required this.gridProvider, required this.progress});
+
+  /// Finishing with grids nobody opened is allowed, but not by accident.
+  Future<void> _finish(BuildContext context) async {
+    if (progress.needsConfirmation) {
+      final go = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(progress.confirmationTitle),
+          content: Text(progress.confirmationBody),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Keep checking'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: FilledButton.styleFrom(backgroundColor: Colors.green),
+              child: const Text('Finish anyway'),
+            ),
+          ],
+        ),
+      );
+      if (go != true) return;
+    }
+    await gridProvider.finishAndSave();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -145,7 +175,7 @@ class _FinishButton extends StatelessWidget {
               ? 'Grid data is still loading; saving waits for it to finish'
               : 'Saves all grids and completes the step',
           child: ElevatedButton(
-            onPressed: () => gridProvider.finishAndSave(),
+            onPressed: () => _finish(context),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,

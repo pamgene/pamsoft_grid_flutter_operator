@@ -1,3 +1,4 @@
+import 'dart:ui' show FontFeature;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -272,6 +273,29 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ],
+              ),
+            ),
+
+            // Where the reviewer stands. "Viewed" = opened in this session.
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.md,
+                vertical: AppSpacing.xs,
+              ),
+              alignment: Alignment.centerLeft,
+              child: Tooltip(
+                message: 'Viewed means the grid image was opened in this '
+                    'session. It does not mean approved.',
+                child: Text(
+                  gridProvider
+                      .progress(imageProvider.gridImageCount)
+                      .headerLine(imageProvider.currentGridIndex),
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ),
 
